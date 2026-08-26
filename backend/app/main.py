@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.shipments import router as shipments_router
 from app.api.tracking import router as tracking_router
 from app.database import get_engine
 
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 
 app.include_router(tracking_router)
+app.include_router(shipments_router)
 
 
 @app.get("/health", tags=["system"])

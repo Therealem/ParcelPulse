@@ -1,6 +1,8 @@
 """Request and response schemas for package tracking lookups."""
 
-from pydantic import BaseModel, Field, field_validator
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TrackingLookupRequest(BaseModel):
@@ -29,8 +31,18 @@ class TrackingLookupRequest(BaseModel):
 class TrackingLookupResponse(BaseModel):
     """Mock shipment details returned for a tracking number."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     tracking_number: str
     carrier: str
     status: str
     estimated_delivery: str
     latest_update: str
+
+
+class ShipmentResponse(TrackingLookupResponse):
+    """A shipment persisted in PostgreSQL."""
+
+    id: int
+    created_at: datetime
+    updated_at: datetime

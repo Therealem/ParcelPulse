@@ -72,7 +72,17 @@ DATABASE_PASSWORD=your_actual_postgresql_password
 ```
 
 The password belongs only in `backend/.env`; that file is ignored by Git. No
-database schema or shipment tables are created by this milestone.
+password is stored in application source.
+
+Create the shipment table once after configuring the database:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m app.database.init_db
+```
+
+The command is safe to rerun because it checks whether the table already
+exists.
 
 ### macOS or Linux
 
@@ -136,7 +146,23 @@ A working connection returns:
 ```
 
 The endpoint removes whitespace, detects a likely carrier, and returns mock
-shipment details. It does not call a carrier API.
+shipment details. Successful lookups are saved to PostgreSQL, and another
+lookup for the same tracking number updates the existing row. It does not call
+a carrier API.
+
+### Saved shipments
+
+List every saved shipment:
+
+```bash
+curl http://localhost:8000/api/shipments
+```
+
+Retrieve a shipment using the `id` returned by the list endpoint:
+
+```bash
+curl http://localhost:8000/api/shipments/1
+```
 
 ## Run backend tests
 
