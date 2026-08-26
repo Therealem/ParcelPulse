@@ -194,51 +194,58 @@ export function ShipmentsDashboard() {
 
       <div className="grid gap-5 md:grid-cols-2">
         {dashboard.shipments.map((shipment) => (
-          <article
+          <Link
             key={shipment.id}
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_20px_48px_rgba(15,23,42,0.09)]"
+            href={`/shipments/${shipment.id}`}
+            aria-label={`View details for shipment ${shipment.tracking_number}`}
+            className="group block rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600"
           >
-            <header className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  Tracking number
-                </p>
-                <h3 className="mt-1 break-all text-lg font-bold tracking-tight text-slate-950">
-                  {shipment.tracking_number}
-                </h3>
-              </div>
-              <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
-                <span className="size-2 rounded-full bg-blue-500" />
-                {shipment.status}
-              </span>
-            </header>
+            <article className="h-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition duration-200 group-hover:-translate-y-0.5 group-hover:border-blue-200 group-hover:shadow-[0_20px_48px_rgba(15,23,42,0.09)]">
+              <header className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    Tracking number
+                  </p>
+                  <h3 className="mt-1 break-all text-lg font-bold tracking-tight text-slate-950 transition group-hover:text-blue-700">
+                    {shipment.tracking_number}
+                  </h3>
+                </div>
+                <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+                  <span className="size-2 rounded-full bg-blue-500" />
+                  {shipment.status}
+                </span>
+              </header>
 
-            <dl className="grid gap-x-8 gap-y-6 px-5 py-6 sm:grid-cols-2 sm:px-6">
-              <div>
-                <dt className="text-sm font-medium text-slate-500">Carrier</dt>
-                <dd className="mt-1 text-base font-semibold text-slate-950">
-                  {shipment.carrier}
-                </dd>
+              <dl className="grid gap-x-8 gap-y-6 px-5 py-6 sm:grid-cols-2 sm:px-6">
+                <div>
+                  <dt className="text-sm font-medium text-slate-500">Carrier</dt>
+                  <dd className="mt-1 text-base font-semibold text-slate-950">
+                    {shipment.carrier}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-slate-500">
+                    Estimated delivery
+                  </dt>
+                  <dd className="mt-1 text-base font-semibold text-slate-950">
+                    {shipment.estimated_delivery}
+                  </dd>
+                </div>
+                <div className="sm:col-span-2">
+                  <dt className="text-sm font-medium text-slate-500">
+                    Latest update
+                  </dt>
+                  <dd className="mt-2 flex items-start gap-3 text-base font-medium leading-7 text-slate-800">
+                    <span className="mt-2.5 size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
+                    {shipment.latest_update}
+                  </dd>
+                </div>
+              </dl>
+              <div className="border-t border-slate-100 px-5 py-4 text-sm font-semibold text-blue-700 sm:px-6">
+                View shipment details <span aria-hidden="true">→</span>
               </div>
-              <div>
-                <dt className="text-sm font-medium text-slate-500">
-                  Estimated delivery
-                </dt>
-                <dd className="mt-1 text-base font-semibold text-slate-950">
-                  {shipment.estimated_delivery}
-                </dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-sm font-medium text-slate-500">
-                  Latest update
-                </dt>
-                <dd className="mt-2 flex items-start gap-3 text-base font-medium leading-7 text-slate-800">
-                  <span className="mt-2.5 size-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
-                  {shipment.latest_update}
-                </dd>
-              </div>
-            </dl>
-          </article>
+            </article>
+          </Link>
         ))}
       </div>
     </section>

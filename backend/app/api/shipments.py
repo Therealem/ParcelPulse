@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_database_session
-from app.schemas.tracking import ShipmentResponse
+from app.schemas.tracking import (
+    ShipmentDetailResponse,
+    ShipmentResponse,
+    TrackingEventResponse,
+)
 from app.services.shipment_service import get_shipment, list_shipments
 
 router = APIRouter(prefix="/api/shipments", tags=["shipments"])
@@ -21,16 +25,27 @@ def read_shipments(
     ]
 
 
-@router.get("/{shipment_id}", response_model=ShipmentResponse)
+@router.get("/{shipment_id}", response_model=ShipmentDetailResponse)
 def read_shipment(
     shipment_id: int,
     session: Session = Depends(get_database_session),
-) -> ShipmentResponse:
-    """Return one saved shipment by ID."""
+) -> ShipmentDetailResponse:
+    """Return one saved shipment and its newest-first tracking history."""
     shipment = get_shipment(session, shipment_id)
     if shipment is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Shipment not found",
         )
-    return ShipmentResponse.model_validate(shipment)
+
+    events = sorted(
+        shipment.tracking_events,
+        key=lambda event: (event.event_time, event.id),
+        reverse=True,
+    )
+    return ShipmentDetailResponse(
+        **ShipmentResponse.model_validate(shipment).model_dump(),
+        tracking_events=[
+            TrackingEventResponse.model_validate(event) for event in events
+        ],
+    )

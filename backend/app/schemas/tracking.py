@@ -46,3 +46,23 @@ class ShipmentResponse(TrackingLookupResponse):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class TrackingEventResponse(BaseModel):
+    """A persisted status update in a shipment's tracking history."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    shipment_id: int
+    status: str
+    description: str
+    location: str | None
+    event_time: datetime
+    created_at: datetime
+
+
+class ShipmentDetailResponse(ShipmentResponse):
+    """A persisted shipment together with its tracking history."""
+
+    tracking_events: list[TrackingEventResponse]

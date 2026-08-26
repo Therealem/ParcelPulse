@@ -42,15 +42,23 @@ def test_successful_lookup_saves_shipment() -> None:
 def test_repeated_lookup_updates_without_duplicate() -> None:
     save_mock_shipment()
     first_saved = client.get("/api/shipments").json()[0]
+    first_detail = client.get(
+        f"/api/shipments/{first_saved['id']}"
+    ).json()
 
     save_mock_shipment()
     response = client.get("/api/shipments")
+    repeated_detail = client.get(
+        f"/api/shipments/{first_saved['id']}"
+    ).json()
 
     assert response.status_code == 200
     shipments = response.json()
     assert len(shipments) == 1
     assert shipments[0]["id"] == first_saved["id"]
     assert shipments[0]["created_at"] == first_saved["created_at"]
+    assert len(first_detail["tracking_events"]) == 4
+    assert repeated_detail["tracking_events"] == first_detail["tracking_events"]
 
 
 def test_get_shipment_by_id() -> None:
@@ -60,7 +68,22 @@ def test_get_shipment_by_id() -> None:
     response = client.get(f"/api/shipments/{saved['id']}")
 
     assert response.status_code == 200
-    assert response.json() == saved
+    detail = response.json()
+    assert {
+        key: detail[key] for key in saved
+    } == saved
+    assert [event["status"] for event in detail["tracking_events"]] == [
+        "In transit",
+        "Departed carrier facility",
+        "Package received by UPS",
+        "Label created",
+    ]
+    assert [
+        event["event_time"] for event in detail["tracking_events"]
+    ] == sorted(
+        event["event_time"] for event in detail["tracking_events"]
+    )[::-1]
+    assert detail["tracking_events"][-1]["location"] is None
 
 
 def test_get_shipment_returns_404_for_unknown_id() -> None:

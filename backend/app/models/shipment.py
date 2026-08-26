@@ -1,16 +1,15 @@
 """Persistent shipment model."""
 
-from datetime import UTC, datetime
+from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, utc_now
 
-
-def utc_now() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-    return datetime.now(UTC)
+if TYPE_CHECKING:
+    from app.models.tracking_event import TrackingEvent
 
 
 class Shipment(Base):
@@ -40,4 +39,8 @@ class Shipment(Base):
         default=utc_now,
         onupdate=utc_now,
         server_default=func.now(),
+    )
+    tracking_events: Mapped[list["TrackingEvent"]] = relationship(
+        back_populates="shipment",
+        cascade="all, delete-orphan",
     )
