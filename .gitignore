@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+/backend/.env
 
 # Frontend dependencies and build output
 node_modules/

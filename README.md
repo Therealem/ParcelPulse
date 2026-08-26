@@ -60,6 +60,20 @@ npm run build
 
 Create and activate a virtual environment before installing dependencies.
 
+Create `backend/.env` with the PostgreSQL connection settings before using the
+database health endpoint:
+
+```env
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=parcelpulse
+DATABASE_USER=parcelpulse_app
+DATABASE_PASSWORD=your_actual_postgresql_password
+```
+
+The password belongs only in `backend/.env`; that file is ignored by Git. No
+database schema or shipment tables are created by this milestone.
+
 ### macOS or Linux
 
 ```bash
@@ -93,6 +107,21 @@ Expected response:
 {
   "status": "ok",
   "service": "parcelpulse-api"
+}
+```
+
+Verify PostgreSQL connectivity with:
+
+```bash
+curl http://localhost:8000/health/db
+```
+
+A working connection returns:
+
+```json
+{
+  "status": "ok",
+  "database": "connected"
 }
 ```
 
