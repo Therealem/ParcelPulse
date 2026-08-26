@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { TrackingLookup } from "@/components/tracking-lookup";
 
 const carriers = ["UPS", "USPS", "FedEx", "DHL"];
@@ -14,7 +16,7 @@ export default function Home() {
         aria-label="Primary navigation"
         className="mx-auto flex w-full max-w-6xl items-center justify-between border-b border-slate-200/80 py-5"
       >
-        <a href="#" className="flex items-center gap-3" aria-label="ParcelPulse home">
+        <Link href="/" className="flex items-center gap-3" aria-label="ParcelPulse home">
           <span className="relative grid size-10 place-items-center rounded-xl bg-blue-600 shadow-[0_8px_24px_rgba(37,99,235,0.28)]">
             <span className="h-4 w-4 rounded-[4px] border-2 border-white" />
             <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-sky-300" />
@@ -22,11 +24,20 @@ export default function Home() {
           <span className="text-lg font-bold tracking-[-0.025em]">
             Parcel<span className="text-blue-600">Pulse</span>
           </span>
-        </a>
+        </Link>
 
-        <span className="hidden text-sm font-medium text-slate-500 sm:block">
-          One search. Every carrier.
-        </span>
+        <div className="flex items-center gap-5">
+          <span className="hidden text-sm font-medium text-slate-500 md:block">
+            One search. Every carrier.
+          </span>
+          <Link
+            href="/shipments"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            <span className="sm:hidden">Shipments</span>
+            <span className="hidden sm:inline">View Shipments</span>
+          </Link>
+        </div>
       </nav>
 
       <section className="mx-auto flex w-full max-w-5xl flex-col items-center pb-20 pt-20 text-center sm:pt-28 lg:pt-32">
