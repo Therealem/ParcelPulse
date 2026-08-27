@@ -7,8 +7,6 @@ from app.database.session import get_engine
 from app.models import Base, Shipment
 from app.services.shipment_service import add_mock_tracking_events
 
-MOCK_UPS_TRACKING_NUMBER = "1Z999AA10123456784"
-
 
 def create_database_tables() -> None:
     """Create all registered tables that do not already exist."""
@@ -16,14 +14,10 @@ def create_database_tables() -> None:
     Base.metadata.create_all(bind=engine)
 
     with Session(engine) as session:
-        shipment = session.scalar(
-            select(Shipment).where(
-                Shipment.tracking_number == MOCK_UPS_TRACKING_NUMBER
-            )
-        )
-        if shipment is not None:
+        shipments = session.scalars(select(Shipment)).all()
+        for shipment in shipments:
             add_mock_tracking_events(shipment, shipment.carrier)
-            session.commit()
+        session.commit()
 
 
 def create_shipment_table() -> None:

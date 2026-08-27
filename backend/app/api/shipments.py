@@ -9,7 +9,11 @@ from app.schemas.tracking import (
     ShipmentResponse,
     TrackingEventResponse,
 )
-from app.services.shipment_service import get_shipment, list_shipments
+from app.services.shipment_service import (
+    get_shipment,
+    list_shipments,
+    ordered_tracking_events,
+)
 
 router = APIRouter(prefix="/api/shipments", tags=["shipments"])
 
@@ -38,11 +42,7 @@ def read_shipment(
             detail="Shipment not found",
         )
 
-    events = sorted(
-        shipment.tracking_events,
-        key=lambda event: (event.event_time, event.id),
-        reverse=True,
-    )
+    events = ordered_tracking_events(shipment)
     return ShipmentDetailResponse(
         **ShipmentResponse.model_validate(shipment).model_dump(),
         tracking_events=[

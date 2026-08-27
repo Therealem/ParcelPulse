@@ -81,8 +81,9 @@ cd backend
 ..\.venv\Scripts\python.exe -m app.database.init_db
 ```
 
-The command is safe to rerun. It creates any missing tables and adds the mock
-history to an existing UPS sample shipment without duplicating events.
+The command is safe to rerun. It creates any missing tables and adds the
+appropriate mock history to existing supported shipments without duplicating
+events.
 
 ### macOS or Linux
 
@@ -146,9 +147,20 @@ A working connection returns:
 ```
 
 The endpoint removes whitespace, detects a likely carrier, and returns mock
-shipment details. Successful lookups are saved to PostgreSQL, and another
-lookup for the same tracking number updates the existing row. It does not call
-a carrier API.
+shipment details with a newest-first `tracking_events` array. Successful
+lookups are saved to PostgreSQL, and another lookup for the same tracking
+number updates the existing row without duplicating events. Unsupported or
+invalid formats return a 422 response. The endpoint does not call a carrier
+API.
+
+Use these deterministic mock tracking numbers during development:
+
+| Carrier | Tracking number |
+| --- | --- |
+| UPS | `1Z999AA10123456784` |
+| USPS | `9400111899223856928499` |
+| FedEx | `123456789012` |
+| DHL | `1234567890` |
 
 ### Saved shipments
 
@@ -205,11 +217,12 @@ visible in browser code, so they must never contain secrets.
 1. Start FastAPI on port 8000.
 2. Start Next.js on port 3000 in a second terminal.
 3. Open [http://localhost:3000](http://localhost:3000).
-4. Enter `1Z999AA10123456784` and select **Track Package**.
-5. Confirm the result card shows UPS, In Transit, August 28, 2026, and the latest
-   mock update.
+4. Enter any mock tracking number from the table above and select **Track
+   Package**.
+5. Confirm the result card shows the matching carrier and its carrier-specific
+   status, estimate, and latest update.
 6. Open **View Shipments**, select the saved shipment, and confirm its four-event
-   timeline is ordered newest to oldest.
+   timeline includes realistic locations and is ordered newest to oldest.
 
 ## Milestone scope
 

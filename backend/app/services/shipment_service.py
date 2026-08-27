@@ -8,45 +8,35 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models import Shipment, TrackingEvent
 from app.schemas.tracking import TrackingLookupResponse
-
-MOCK_UPS_TRACKING_EVENTS = (
-    {
-        "status": "Label created",
-        "description": "Shipping label created; UPS is awaiting the package.",
-        "location": None,
-        "event_time": datetime(2026, 8, 24, 14, 15, tzinfo=UTC),
-    },
-    {
-        "status": "Package received by UPS",
-        "description": "Package received by UPS and prepared for transit.",
-        "location": "Dallas, TX",
-        "event_time": datetime(2026, 8, 25, 20, 40, tzinfo=UTC),
-    },
-    {
-        "status": "Departed carrier facility",
-        "description": "Package departed the UPS carrier facility.",
-        "location": "Dallas, TX",
-        "event_time": datetime(2026, 8, 26, 6, 10, tzinfo=UTC),
-    },
-    {
-        "status": "In transit",
-        "description": "Package is moving through the UPS network.",
-        "location": "Fort Worth, TX",
-        "event_time": datetime(2026, 8, 26, 15, 30, tzinfo=UTC),
-    },
-)
+from app.services.mock_tracking import get_mock_tracking_data
 
 
 def add_mock_tracking_events(
     shipment: Shipment,
     carrier: str,
 ) -> None:
-    """Seed one mock UPS history without duplicating existing events."""
-    if carrier != "UPS" or shipment.tracking_events:
+    """Seed one carrier-specific mock history without duplicate events."""
+    mock_data = get_mock_tracking_data(carrier)
+    if mock_data is None or shipment.tracking_events:
         return
 
     shipment.tracking_events.extend(
-        TrackingEvent(**event) for event in MOCK_UPS_TRACKING_EVENTS
+        TrackingEvent(
+            status=event.status,
+            description=event.description,
+            location=event.location,
+            event_time=event.event_time,
+        )
+        for event in mock_data.events
+    )
+
+
+def ordered_tracking_events(shipment: Shipment) -> list[TrackingEvent]:
+    """Return a shipment's tracking events from newest to oldest."""
+    return sorted(
+        shipment.tracking_events,
+        key=lambda event: (event.event_time, event.id),
+        reverse=True,
     )
 
 

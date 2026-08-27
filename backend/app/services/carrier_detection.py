@@ -5,7 +5,7 @@ import re
 _UPS_PATTERN = re.compile(r"^1Z[A-Z0-9]{16}$")
 _USPS_DOMESTIC_PATTERN = re.compile(r"^9[2345]\d{18,20}$")
 _USPS_INTERNATIONAL_PATTERN = re.compile(r"^[A-Z]{2}\d{9}US$")
-_FEDEX_PATTERN = re.compile(r"^(?:\d{12}|\d{15}|\d{20})$")
+_FEDEX_PATTERN = re.compile(r"^(?:\d{12}|\d{15}|\d{20}|\d{22})$")
 _DHL_PATTERN = re.compile(r"^(?:\d{10}|JJD\d{16,20}|JD\d{16,20}|GM\d{16,18})$")
 
 

@@ -1,5 +1,6 @@
 """Tests for persistent shipment storage and retrieval."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -7,6 +8,12 @@ from app.main import app
 client = TestClient(app)
 
 UPS_TRACKING_NUMBER = "1Z999AA10123456784"
+MOCK_TRACKING_NUMBERS = [
+    UPS_TRACKING_NUMBER,
+    "9400111899223856928499",
+    "123456789012",
+    "1234567890",
+]
 
 
 def save_mock_shipment(tracking_number: str = UPS_TRACKING_NUMBER) -> dict:
@@ -39,14 +46,17 @@ def test_successful_lookup_saves_shipment() -> None:
     assert shipments[0]["updated_at"]
 
 
-def test_repeated_lookup_updates_without_duplicate() -> None:
-    save_mock_shipment()
+@pytest.mark.parametrize("tracking_number", MOCK_TRACKING_NUMBERS)
+def test_repeated_lookup_updates_without_duplicate(
+    tracking_number: str,
+) -> None:
+    save_mock_shipment(tracking_number)
     first_saved = client.get("/api/shipments").json()[0]
     first_detail = client.get(
         f"/api/shipments/{first_saved['id']}"
     ).json()
 
-    save_mock_shipment()
+    save_mock_shipment(tracking_number)
     response = client.get("/api/shipments")
     repeated_detail = client.get(
         f"/api/shipments/{first_saved['id']}"

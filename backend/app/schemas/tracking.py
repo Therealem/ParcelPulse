@@ -62,6 +62,12 @@ class TrackingEventResponse(BaseModel):
     created_at: datetime
 
 
+class TrackingLookupResult(TrackingLookupResponse):
+    """A mock lookup response with the package's tracking history."""
+
+    tracking_events: list[TrackingEventResponse]
+
+
 class ShipmentDetailResponse(ShipmentResponse):
     """A persisted shipment together with its tracking history."""
 
