@@ -176,6 +176,15 @@ Retrieve a shipment using the `id` returned by the list endpoint:
 curl http://localhost:8000/api/shipments/1
 ```
 
+Delete one shipment and its related tracking history:
+
+```bash
+curl -X DELETE http://localhost:8000/api/shipments/1
+```
+
+A successful deletion returns `204 No Content`. Other shipments are not
+affected.
+
 The single-shipment response includes a `tracking_events` array ordered newest
 to oldest. In the frontend, select any card at
 [http://localhost:3000/shipments](http://localhost:3000/shipments) to open its
@@ -223,6 +232,12 @@ visible in browser code, so they must never contain secrets.
    status, estimate, and latest update.
 6. Open **View Shipments**, select the saved shipment, and confirm its four-event
    timeline includes realistic locations and is ordered newest to oldest.
+
+The saved shipments dashboard also supports partial tracking-number search,
+carrier and status filters, and sorting by newest saved, oldest saved, or
+earliest estimated delivery. Use **Refresh** on a card or detail page to run the
+mock lookup again without duplicating events. The detail page also provides a
+confirmed **Delete Shipment** action.
 
 ## Milestone scope
 

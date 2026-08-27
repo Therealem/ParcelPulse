@@ -98,3 +98,19 @@ def get_shipment(session: Session, shipment_id: int) -> Shipment | None:
         .options(selectinload(Shipment.tracking_events))
         .where(Shipment.id == shipment_id)
     )
+
+
+def delete_shipment(session: Session, shipment_id: int) -> bool:
+    """Delete one shipment and its related tracking events when present."""
+    shipment = get_shipment(session, shipment_id)
+    if shipment is None:
+        return False
+
+    session.delete(shipment)
+    try:
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        raise
+
+    return True

@@ -1,6 +1,6 @@
 """Saved shipment API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_database_session
@@ -10,6 +10,7 @@ from app.schemas.tracking import (
     TrackingEventResponse,
 )
 from app.services.shipment_service import (
+    delete_shipment,
     get_shipment,
     list_shipments,
     ordered_tracking_events,
@@ -49,3 +50,22 @@ def read_shipment(
             TrackingEventResponse.model_validate(event) for event in events
         ],
     )
+
+
+@router.delete(
+    "/{shipment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def remove_shipment(
+    shipment_id: int,
+    session: Session = Depends(get_database_session),
+) -> Response:
+    """Delete one saved shipment together with its tracking history."""
+    if not delete_shipment(session, shipment_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found",
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

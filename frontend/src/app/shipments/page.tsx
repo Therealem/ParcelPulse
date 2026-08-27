@@ -8,7 +8,13 @@ export const metadata: Metadata = {
   description: "View every package saved to your ParcelPulse dashboard.",
 };
 
-export default function ShipmentsPage() {
+export default async function ShipmentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const { deleted } = await searchParams;
+
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#f7f8fb] px-5 text-slate-950 sm:px-8">
       <div
@@ -53,7 +59,14 @@ export default function ShipmentsPage() {
           </p>
         </div>
 
-        <ShipmentsDashboard />
+        <ShipmentsDashboard
+          refreshToken={deleted}
+          initialNotice={
+            deleted
+              ? "Shipment deleted successfully. Its tracking history was also removed."
+              : undefined
+          }
+        />
       </section>
     </main>
   );

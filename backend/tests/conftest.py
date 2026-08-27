@@ -13,7 +13,7 @@ from app.models import Base
 
 
 @pytest.fixture(autouse=True)
-def isolated_database() -> Generator[None, None, None]:
+def isolated_database() -> Generator[sessionmaker[Session], None, None]:
     """Run each test against a fresh in-memory SQLite database."""
     engine = create_engine(
         "sqlite+pysqlite://",
@@ -33,7 +33,7 @@ def isolated_database() -> Generator[None, None, None]:
 
     app.dependency_overrides[get_database_session] = override_database_session
     try:
-        yield
+        yield session_factory
     finally:
         app.dependency_overrides.pop(get_database_session, None)
         Base.metadata.drop_all(bind=engine)

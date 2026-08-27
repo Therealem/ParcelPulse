@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ShipmentActions } from "@/components/shipment-actions";
 import { ShipmentPageFrame } from "@/components/shipment-page-frame";
 import { getShipmentDetail } from "@/lib/shipment-details";
 
@@ -99,10 +100,16 @@ export default async function ShipmentDetailPage({
               {shipment.tracking_number}
             </h1>
           </div>
-          <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 ring-1 ring-inset ring-blue-100">
-            <span className="size-2.5 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]" />
-            {shipment.status}
-          </span>
+          <div className="flex flex-col items-start gap-4 lg:items-end">
+            <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 ring-1 ring-inset ring-blue-100">
+              <span className="size-2.5 rounded-full bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]" />
+              {shipment.status}
+            </span>
+            <ShipmentActions
+              shipmentId={shipment.id}
+              trackingNumber={shipment.tracking_number}
+            />
+          </div>
         </header>
 
         <div className="mt-9 grid gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:items-start">

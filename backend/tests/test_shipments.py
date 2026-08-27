@@ -2,8 +2,11 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.main import app
+from app.models import Shipment, TrackingEvent
 
 client = TestClient(app)
 
@@ -67,6 +70,7 @@ def test_repeated_lookup_updates_without_duplicate(
     assert len(shipments) == 1
     assert shipments[0]["id"] == first_saved["id"]
     assert shipments[0]["created_at"] == first_saved["created_at"]
+    assert shipments[0]["updated_at"] != first_saved["updated_at"]
     assert len(first_detail["tracking_events"]) == 4
     assert repeated_detail["tracking_events"] == first_detail["tracking_events"]
 
@@ -98,6 +102,58 @@ def test_get_shipment_by_id() -> None:
 
 def test_get_shipment_returns_404_for_unknown_id() -> None:
     response = client.get("/api/shipments/9999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Shipment not found"}
+
+
+def test_delete_shipment_cascades_events_and_preserves_others(
+    isolated_database: sessionmaker[Session],
+) -> None:
+    save_mock_shipment(UPS_TRACKING_NUMBER)
+    save_mock_shipment("9400111899223856928499")
+    shipments = client.get("/api/shipments").json()
+    deleted = next(
+        shipment
+        for shipment in shipments
+        if shipment["tracking_number"] == UPS_TRACKING_NUMBER
+    )
+    preserved = next(
+        shipment
+        for shipment in shipments
+        if shipment["tracking_number"] == "9400111899223856928499"
+    )
+
+    response = client.delete(f"/api/shipments/{deleted['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    assert client.get(f"/api/shipments/{deleted['id']}").status_code == 404
+    remaining = client.get("/api/shipments").json()
+    assert [shipment["id"] for shipment in remaining] == [preserved["id"]]
+
+    with isolated_database() as session:
+        deleted_events = session.scalar(
+            select(func.count())
+            .select_from(TrackingEvent)
+            .where(TrackingEvent.shipment_id == deleted["id"])
+        )
+        preserved_events = session.scalar(
+            select(func.count())
+            .select_from(TrackingEvent)
+            .where(TrackingEvent.shipment_id == preserved["id"])
+        )
+        shipment_count = session.scalar(
+            select(func.count()).select_from(Shipment)
+        )
+
+    assert deleted_events == 0
+    assert preserved_events == 4
+    assert shipment_count == 1
+
+
+def test_delete_shipment_returns_404_for_unknown_id() -> None:
+    response = client.delete("/api/shipments/9999")
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Shipment not found"}
