@@ -1,30 +1,24 @@
-"""Create ParcelPulse tables in the configured PostgreSQL database."""
+"""Compatibility entry point for applying Alembic migrations."""
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from pathlib import Path
 
-from app.database.session import get_engine
-from app.models import Base, Shipment
-from app.services.shipment_service import add_mock_tracking_events
+from alembic import command
+from alembic.config import Config
+
+_BACKEND_DIRECTORY = Path(__file__).resolve().parents[2]
 
 
 def create_database_tables() -> None:
-    """Create all registered tables that do not already exist."""
-    engine = get_engine()
-    Base.metadata.create_all(bind=engine)
-
-    with Session(engine) as session:
-        shipments = session.scalars(select(Shipment)).all()
-        for shipment in shipments:
-            add_mock_tracking_events(shipment, shipment.carrier)
-        session.commit()
+    """Apply all pending migrations through Alembic."""
+    alembic_config = Config(str(_BACKEND_DIRECTORY / "alembic.ini"))
+    command.upgrade(alembic_config, "head")
 
 
 def create_shipment_table() -> None:
-    """Create database tables through the original public helper name."""
+    """Apply migrations through the original compatibility helper name."""
     create_database_tables()
 
 
 if __name__ == "__main__":
     create_database_tables()
-    print("ParcelPulse database tables are ready.")
+    print("ParcelPulse database is at the latest Alembic revision.")

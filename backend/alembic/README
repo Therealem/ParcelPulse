@@ -1,0 +1,6 @@
+ParcelPulse database migrations
+
+Run Alembic commands from the backend directory. Connection settings are read
+from backend/.env through the application's existing DatabaseSettings class.
+
+Review every generated migration before applying it to PostgreSQL.

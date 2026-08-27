@@ -17,6 +17,8 @@ ParcelPulse/
 |   |   |-- schemas/
 |   |   |-- services/
 |   |   `-- main.py    # FastAPI application entry point
+|   |-- alembic/       # Versioned database migrations
+|   |-- alembic.ini
 |   |-- tests/
 |   `-- requirements.txt
 |-- .env.example
@@ -74,37 +76,92 @@ DATABASE_PASSWORD=your_actual_postgresql_password
 The password belongs only in `backend/.env`; that file is ignored by Git. No
 password is stored in application source.
 
-Create or update the ParcelPulse tables after configuring the database:
-
-```powershell
-cd backend
-..\.venv\Scripts\python.exe -m app.database.init_db
-```
-
-The command is safe to rerun. It creates any missing tables and adds the
-appropriate mock history to existing supported shipments without duplicating
-events.
-
 ### macOS or Linux
 
 ```bash
-cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-uvicorn app.main:app --reload
+python -m pip install -r backend/requirements.txt
+cd backend
+../.venv/bin/python -m uvicorn app.main:app --reload
 ```
 
 ### Windows PowerShell
 
 ```powershell
-cd backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+cd backend
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
+
+Complete the applicable steps in **Database migrations** below before starting
+Uvicorn. The application does not run `create_all` or migrations at startup;
+production deployments must apply committed migrations explicitly.
+
+## Database migrations
+
+Alembic reads the same `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`,
+`DATABASE_USER`, and `DATABASE_PASSWORD` values from `backend/.env` as the
+FastAPI application. Run all Alembic commands from the `backend` directory.
+
+For a new, empty database, apply every migration before starting FastAPI:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+For an existing ParcelPulse database that already contains the `shipments`
+and `tracking_events` tables, do **not** run the initial migration directly.
+First stop FastAPI (or otherwise pause writes) and take a database backup. Then
+run the read-only baseline verifier to compare the live schema with the models:
+
+```powershell
+..\.venv\Scripts\python.exe -m app.database.verify_migration_baseline
+```
+
+Only when it reports that the schema matches and is safe to stamp should the
+existing schema be marked as the initial revision:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic stamp head
+```
+
+`stamp` records the revision without running the migration's table-creation
+operations, so it is the correct baseline step for a matching pre-existing
+schema. Confirm the recorded revision afterward:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic current
+```
+
+Finally, confirm that no model changes are missing from the migration chain:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic check
+```
+
+Common migration commands:
+
+```powershell
+# Apply all pending revisions
+..\.venv\Scripts\python.exe -m alembic upgrade head
+
+# Reverse exactly one revision
+..\.venv\Scripts\python.exe -m alembic downgrade -1
+
+# Show the database's current revision
+..\.venv\Scripts\python.exe -m alembic current
+
+# Show the migration chain
+..\.venv\Scripts\python.exe -m alembic history
+```
+
+The initial revision's downgrade removes both application tables and therefore
+their data. Never downgrade that revision on a populated database unless that
+data loss is explicitly intended and a verified backup exists.
 
 The API runs at [http://localhost:8000](http://localhost:8000). Verify it with:
 
