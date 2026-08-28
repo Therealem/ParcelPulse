@@ -43,16 +43,19 @@ def ordered_tracking_events(shipment: Shipment) -> list[TrackingEvent]:
 def save_shipment(
     session: Session,
     lookup: TrackingLookupResponse,
+    user_id: int,
 ) -> Shipment:
-    """Insert a shipment or update the existing row for its tracking number."""
+    """Insert or update one user's shipment for a tracking number."""
     shipment = session.scalar(
         select(Shipment).where(
-            Shipment.tracking_number == lookup.tracking_number
+            Shipment.user_id == user_id,
+            Shipment.tracking_number == lookup.tracking_number,
         )
     )
 
     if shipment is None:
         shipment = Shipment(
+            user_id=user_id,
             tracking_number=lookup.tracking_number,
             carrier=lookup.carrier,
             status=lookup.status,
@@ -79,11 +82,11 @@ def save_shipment(
     return shipment
 
 
-def list_shipments(session: Session) -> list[Shipment]:
-    """Return all saved shipments, newest first."""
+def list_shipments(session: Session, user_id: int) -> list[Shipment]:
+    """Return one user's saved shipments, newest first."""
     return list(
         session.scalars(
-            select(Shipment).order_by(
+            select(Shipment).where(Shipment.user_id == user_id).order_by(
                 Shipment.created_at.desc(),
                 Shipment.id.desc(),
             )
@@ -91,18 +94,22 @@ def list_shipments(session: Session) -> list[Shipment]:
     )
 
 
-def get_shipment(session: Session, shipment_id: int) -> Shipment | None:
-    """Return one shipment by primary key when it exists."""
+def get_shipment(
+    session: Session,
+    shipment_id: int,
+    user_id: int,
+) -> Shipment | None:
+    """Return a shipment only when it belongs to the requesting user."""
     return session.scalar(
         select(Shipment)
         .options(selectinload(Shipment.tracking_events))
-        .where(Shipment.id == shipment_id)
+        .where(Shipment.id == shipment_id, Shipment.user_id == user_id)
     )
 
 
-def delete_shipment(session: Session, shipment_id: int) -> bool:
-    """Delete one shipment and its related tracking events when present."""
-    shipment = get_shipment(session, shipment_id)
+def delete_shipment(session: Session, shipment_id: int, user_id: int) -> bool:
+    """Delete an owned shipment and its related events when present."""
+    shipment = get_shipment(session, shipment_id, user_id)
     if shipment is None:
         return False
 

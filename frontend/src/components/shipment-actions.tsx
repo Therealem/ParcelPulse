@@ -64,9 +64,17 @@ export function ShipmentActions({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ tracking_number: trackingNumber }),
         },
       );
+
+      if (response.status === 401) {
+        router.replace(
+          `/login?next=${encodeURIComponent(`/shipments/${shipmentId}`)}`,
+        );
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -117,8 +125,15 @@ export function ShipmentActions({
     try {
       const response = await fetch(
         `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}`,
-        { method: "DELETE" },
+        { method: "DELETE", credentials: "include" },
       );
+
+      if (response.status === 401) {
+        router.replace(
+          `/login?next=${encodeURIComponent(`/shipments/${shipmentId}`)}`,
+        );
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(

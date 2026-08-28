@@ -8,11 +8,14 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.auth import router as auth_router
 from app.api.shipments import router as shipments_router
 from app.api.tracking import router as tracking_router
+from app.config import get_application_settings
 from app.database import get_engine
 
 logger = logging.getLogger(__name__)
+application_settings = get_application_settings()
 
 app = FastAPI(
     title="ParcelPulse API",
@@ -22,12 +25,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=False,
+    allow_origins=[application_settings.frontend_origin],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(tracking_router)
 app.include_router(shipments_router)
 

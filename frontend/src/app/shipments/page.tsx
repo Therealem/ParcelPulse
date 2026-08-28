@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ShipmentsDashboard } from "@/components/shipments-dashboard";
+import { LogoutButton } from "@/components/logout-button";
 
 export const metadata: Metadata = {
   title: "Saved Shipments | ParcelPulse",
@@ -36,12 +37,15 @@ export default async function ShipmentsPage({
           </span>
         </Link>
 
-        <Link
-          href="/"
-          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          Track a package
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Track a package
+          </Link>
+          <LogoutButton />
+        </div>
       </nav>
 
       <section className="mx-auto w-full max-w-6xl pb-20 pt-14 sm:pt-20">

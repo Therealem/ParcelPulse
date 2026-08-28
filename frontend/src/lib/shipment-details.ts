@@ -1,4 +1,7 @@
 import { cache } from "react";
+import { redirect } from "next/navigation";
+
+import { getRequestCookieHeader } from "@/lib/auth";
 
 export type TrackingEvent = {
   id: number;
@@ -33,10 +36,19 @@ export const getShipmentDetail = cache(
     const response = await fetch(
       `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}`,
       {
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          Cookie: await getRequestCookieHeader(),
+        },
         cache: "no-store",
       },
     );
+
+    if (response.status === 401) {
+      redirect(
+        `/login?next=${encodeURIComponent(`/shipments/${shipmentId}`)}`,
+      );
+    }
 
     if (response.status === 404) {
       return null;

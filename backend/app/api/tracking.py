@@ -3,7 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.database import get_database_session
+from app.models import User
 from app.schemas.tracking import (
     TrackingEventResponse,
     TrackingLookupRequest,
@@ -24,6 +26,7 @@ router = APIRouter(prefix="/api/tracking", tags=["tracking"])
 def lookup_tracking(
     payload: TrackingLookupRequest,
     session: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user),
 ) -> TrackingLookupResult:
     """Return mock shipment data and persist it for later retrieval."""
     carrier = detect_carrier(payload.tracking_number)
@@ -41,7 +44,7 @@ def lookup_tracking(
         estimated_delivery=mock_data.estimated_delivery,
         latest_update=mock_data.latest_update,
     )
-    shipment = save_shipment(session, lookup)
+    shipment = save_shipment(session, lookup, current_user.id)
     return TrackingLookupResult(
         **TrackingLookupResponse.model_validate(shipment).model_dump(),
         tracking_events=[

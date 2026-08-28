@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useState } from "react";
 
 type Shipment = {
@@ -68,9 +69,14 @@ export function TrackingLookup() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ tracking_number: trackingNumber }),
         },
       );
+
+      if (response.status === 401) {
+        throw new Error("Sign in to track and save this package.");
+      }
 
       if (!response.ok) {
         throw new Error(await getApiError(response));
@@ -131,13 +137,19 @@ export function TrackingLookup() {
 
       <div className="w-full" aria-live="polite" aria-busy={isLoading}>
         {error && (
-          <p
-            id="tracking-error"
-            role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-700"
-          >
-            {error}
-          </p>
+          <div className="mt-4 flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-700 sm:flex-row sm:items-center sm:justify-between">
+            <p id="tracking-error" role="alert">
+              {error}
+            </p>
+            {error.startsWith("Sign in") && (
+              <Link
+                href="/login"
+                className="shrink-0 font-semibold text-blue-700 underline underline-offset-4"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
         )}
 
         {shipment && (

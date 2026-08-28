@@ -3,7 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import get_current_user
 from app.database import get_database_session
+from app.models import User
 from app.schemas.tracking import (
     ShipmentDetailResponse,
     ShipmentResponse,
@@ -22,11 +24,12 @@ router = APIRouter(prefix="/api/shipments", tags=["shipments"])
 @router.get("", response_model=list[ShipmentResponse])
 def read_shipments(
     session: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user),
 ) -> list[ShipmentResponse]:
-    """Return all saved shipments."""
+    """Return the authenticated user's saved shipments."""
     return [
         ShipmentResponse.model_validate(shipment)
-        for shipment in list_shipments(session)
+        for shipment in list_shipments(session, current_user.id)
     ]
 
 
@@ -34,9 +37,10 @@ def read_shipments(
 def read_shipment(
     shipment_id: int,
     session: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user),
 ) -> ShipmentDetailResponse:
     """Return one saved shipment and its newest-first tracking history."""
-    shipment = get_shipment(session, shipment_id)
+    shipment = get_shipment(session, shipment_id, current_user.id)
     if shipment is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -60,9 +64,10 @@ def read_shipment(
 def remove_shipment(
     shipment_id: int,
     session: Session = Depends(get_database_session),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
     """Delete one saved shipment together with its tracking history."""
-    if not delete_shipment(session, shipment_id):
+    if not delete_shipment(session, shipment_id, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Shipment not found",

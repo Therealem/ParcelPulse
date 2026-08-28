@@ -130,6 +130,7 @@ def test_lookup_allows_local_frontend_origin() -> None:
     assert response.headers["access-control-allow-origin"] == (
         "http://localhost:3000"
     )
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 @pytest.mark.parametrize(

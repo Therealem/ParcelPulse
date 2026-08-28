@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { LogoutButton } from "@/components/logout-button";
+
 export function ShipmentPageFrame({ children }: { children: ReactNode }) {
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#f7f8fb] px-5 text-slate-950 sm:px-8">
@@ -23,12 +25,15 @@ export function ShipmentPageFrame({ children }: { children: ReactNode }) {
           </span>
         </Link>
 
-        <Link
-          href="/shipments"
-          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          Saved Shipments
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/shipments"
+            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Saved Shipments
+          </Link>
+          <LogoutButton />
+        </div>
       </nav>
 
       {children}

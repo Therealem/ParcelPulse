@@ -26,16 +26,25 @@ export default function Home() {
           </span>
         </Link>
 
-        <div className="flex items-center gap-5">
-          <span className="hidden text-sm font-medium text-slate-500 md:block">
-            One search. Every carrier.
-          </span>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="/login"
+            className="hidden h-10 items-center justify-center px-2 text-sm font-semibold text-slate-600 transition hover:text-blue-700 sm:inline-flex"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/register"
+            className="hidden h-10 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:inline-flex"
+          >
+            Create account
+          </Link>
           <Link
             href="/shipments"
             className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
-            <span className="sm:hidden">Shipments</span>
-            <span className="hidden sm:inline">View Shipments</span>
+            <span className="md:hidden">Shipments</span>
+            <span className="hidden md:inline">View Shipments</span>
           </Link>
         </div>
       </nav>

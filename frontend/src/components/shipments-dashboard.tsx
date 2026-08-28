@@ -49,10 +49,15 @@ async function requestShipments(signal?: AbortSignal): Promise<Shipment[]> {
     `${apiBaseUrl.replace(/\/$/, "")}/api/shipments`,
     {
       headers: { Accept: "application/json" },
+      credentials: "include",
       cache: "no-store",
       signal,
     },
   );
+
+  if (response.status === 401) {
+    throw new Error("AUTH_REQUIRED");
+  }
 
   if (!response.ok) {
     throw new Error("The shipment service returned an error.");
@@ -105,7 +110,8 @@ export function ShipmentsDashboard({
   initialNotice?: string;
   refreshToken?: string;
 }) {
-  const { bfcacheId } = useRouter();
+  const router = useRouter();
+  const { bfcacheId } = router;
   const [requestKey, setRequestKey] = useState(0);
   const [dashboard, setDashboard] = useState<DashboardState>({
     status: "loading",
@@ -144,6 +150,11 @@ export function ShipmentsDashboard({
           return;
         }
 
+        if (error instanceof Error && error.message === "AUTH_REQUIRED") {
+          router.replace("/login?next=%2Fshipments");
+          return;
+        }
+
         setDashboard({
           status: "error",
           message:
@@ -155,7 +166,7 @@ export function ShipmentsDashboard({
     void loadShipments();
 
     return () => controller.abort();
-  }, [bfcacheId, refreshToken, requestKey]);
+  }, [bfcacheId, refreshToken, requestKey, router]);
 
   const shipments =
     dashboard.status === "success" ? dashboard.shipments : emptyShipments;
@@ -237,11 +248,17 @@ export function ShipmentsDashboard({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             tracking_number: shipment.tracking_number,
           }),
         },
       );
+
+      if (response.status === 401) {
+        router.replace("/login?next=%2Fshipments");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(
