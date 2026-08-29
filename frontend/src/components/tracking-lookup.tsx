@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 
 type Shipment = {
+  id: number;
   tracking_number: string;
   carrier: string;
   status: string;
@@ -38,6 +40,7 @@ async function getApiError(response: Response): Promise<string> {
 }
 
 export function TrackingLookup() {
+  const router = useRouter();
   const [trackingNumber, setTrackingNumber] = useState("");
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export function TrackingLookup() {
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/tracking/lookup`,
+        `${apiBaseUrl.replace(/\/$/, "")}/api/tracking`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -85,6 +88,7 @@ export function TrackingLookup() {
       const result = (await response.json()) as Shipment;
       setTrackingNumber(result.tracking_number);
       setShipment(result);
+      router.push(`/shipments/${result.id}`);
     } catch (lookupError) {
       setShipment(null);
       setError(

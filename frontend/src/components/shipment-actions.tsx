@@ -60,12 +60,10 @@ export function ShipmentActions({
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/tracking/lookup`,
+        `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}/refresh`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ tracking_number: trackingNumber }),
         },
       );
 

@@ -7,6 +7,14 @@ from app.config import AuthSettings, get_auth_settings
 from app.database import get_database_session
 from app.models import User
 from app.services.auth_service import decode_session_token
+from app.services.tracking_service import TrackingService
+
+
+def get_tracking_service(
+    session: Session = Depends(get_database_session),
+) -> TrackingService:
+    """Build the request-scoped tracking pipeline service."""
+    return TrackingService(session)
 
 
 def get_current_user(

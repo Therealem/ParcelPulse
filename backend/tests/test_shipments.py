@@ -22,7 +22,7 @@ MOCK_TRACKING_NUMBERS = [
 def save_mock_shipment(tracking_number: str = UPS_TRACKING_NUMBER) -> dict:
     """Create a shipment through the public tracking lookup endpoint."""
     response = client.post(
-        "/api/tracking/lookup",
+        "/api/tracking",
         json={"tracking_number": tracking_number},
     )
     assert response.status_code == 200
@@ -105,6 +105,83 @@ def test_get_shipment_returns_404_for_unknown_id() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Shipment not found"}
+
+
+def test_refresh_updates_owned_shipment_without_duplicate_events(
+    isolated_database: sessionmaker[Session],
+) -> None:
+    shipment = save_mock_shipment()
+    shipment_id = shipment["id"]
+    original_event_ids = [
+        event["id"] for event in shipment["tracking_events"]
+    ]
+
+    first_refresh = client.post(f"/api/shipments/{shipment_id}/refresh")
+    second_refresh = client.post(f"/api/shipments/{shipment_id}/refresh")
+
+    assert first_refresh.status_code == 200
+    assert second_refresh.status_code == 200
+    assert first_refresh.json()["id"] == shipment_id
+    assert second_refresh.json()["id"] == shipment_id
+    assert [
+        event["id"] for event in first_refresh.json()["tracking_events"]
+    ] == original_event_ids
+    assert [
+        event["id"] for event in second_refresh.json()["tracking_events"]
+    ] == original_event_ids
+
+    with isolated_database() as session:
+        shipment_count = session.scalar(
+            select(func.count())
+            .select_from(Shipment)
+            .where(Shipment.tracking_number == UPS_TRACKING_NUMBER)
+        )
+        event_count = session.scalar(
+            select(func.count())
+            .select_from(TrackingEvent)
+            .where(TrackingEvent.shipment_id == shipment_id)
+        )
+
+    assert shipment_count == 1
+    assert event_count == 4
+
+
+def test_tracking_does_not_claim_or_update_legacy_null_user_shipment(
+    isolated_database: sessionmaker[Session],
+) -> None:
+    with isolated_database() as session:
+        legacy = Shipment(
+            user_id=None,
+            tracking_number=UPS_TRACKING_NUMBER,
+            carrier="Legacy carrier",
+            status="Legacy status",
+            estimated_delivery="Legacy estimate",
+            latest_update="Legacy update",
+        )
+        session.add(legacy)
+        session.commit()
+        session.refresh(legacy)
+        legacy_id = legacy.id
+
+    owned = save_mock_shipment()
+
+    with isolated_database() as session:
+        legacy = session.get(Shipment, legacy_id)
+        matching_shipments = session.scalars(
+            select(Shipment).where(
+                Shipment.tracking_number == UPS_TRACKING_NUMBER
+            )
+        ).all()
+
+        assert legacy is not None
+        assert legacy.user_id is None
+        assert legacy.carrier == "Legacy carrier"
+        assert legacy.status == "Legacy status"
+        assert legacy.estimated_delivery == "Legacy estimate"
+        assert legacy.latest_update == "Legacy update"
+
+    assert len(matching_shipments) == 2
+    assert owned["id"] != legacy_id
 
 
 def test_delete_shipment_cascades_events_and_preserves_others(

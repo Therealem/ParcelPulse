@@ -15,15 +15,6 @@ type Shipment = {
   updated_at: string;
 };
 
-type TrackingLookupResult = Pick<
-  Shipment,
-  | "tracking_number"
-  | "carrier"
-  | "status"
-  | "estimated_delivery"
-  | "latest_update"
->;
-
 type DashboardState =
   | { status: "loading" }
   | { status: "success"; shipments: Shipment[] }
@@ -244,14 +235,10 @@ export function ShipmentsDashboard({
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/tracking/lookup`,
+        `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipment.id}/refresh`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            tracking_number: shipment.tracking_number,
-          }),
         },
       );
 
@@ -269,7 +256,7 @@ export function ShipmentsDashboard({
         );
       }
 
-      const refreshed = (await response.json()) as TrackingLookupResult;
+      const refreshed = (await response.json()) as Shipment;
       setDashboard((currentDashboard) => {
         if (currentDashboard.status !== "success") {
           return currentDashboard;

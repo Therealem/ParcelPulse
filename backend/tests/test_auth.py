@@ -37,7 +37,7 @@ def login(
 def track_ups(client: TestClient):
     """Create the deterministic UPS shipment for the current user."""
     return client.post(
-        "/api/tracking/lookup",
+        "/api/tracking",
         json={"tracking_number": UPS_TRACKING_NUMBER},
     )
 
@@ -111,6 +111,7 @@ def test_shipment_endpoints_require_authentication(
 ) -> None:
     assert auth_client.get("/api/shipments").status_code == 401
     assert auth_client.get("/api/shipments/1").status_code == 401
+    assert auth_client.post("/api/shipments/1/refresh").status_code == 401
     assert auth_client.delete("/api/shipments/1").status_code == 401
     assert track_ups(auth_client).status_code == 401
 
@@ -139,9 +140,15 @@ def test_users_only_see_and_refresh_their_own_shipments(
     assert auth_client.delete(
         f"/api/shipments/{first_shipment['id']}"
     ).status_code == 404
+    assert auth_client.post(
+        f"/api/shipments/{first_shipment['id']}/refresh"
+    ).status_code == 404
 
-    refreshed = track_ups(auth_client)
+    refreshed = auth_client.post(
+        f"/api/shipments/{second_shipment['id']}/refresh"
+    )
     assert refreshed.status_code == 200
+    assert refreshed.json()["id"] == second_shipment["id"]
     assert len(refreshed.json()["tracking_events"]) == 4
 
     with isolated_database() as session:
@@ -170,7 +177,11 @@ def test_user_cannot_open_or_delete_another_users_shipment(
     register(auth_client, "second@example.com")
 
     detail = auth_client.get(f"/api/shipments/{first_shipment_id}")
+    refresh = auth_client.post(
+        f"/api/shipments/{first_shipment_id}/refresh"
+    )
     deletion = auth_client.delete(f"/api/shipments/{first_shipment_id}")
 
     assert detail.status_code == 404
+    assert refresh.status_code == 404
     assert deletion.status_code == 404

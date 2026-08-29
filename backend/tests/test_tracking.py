@@ -3,15 +3,22 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api.dependencies import get_tracking_service
+from app.carriers import (
+    AmbiguousCarrierError,
+    CarrierAdapterError,
+    UnsupportedTrackingNumberError,
+    detect_carrier,
+    normalize_tracking_number,
+)
 from app.main import app
-from app.services.carrier_detection import detect_carrier
 
 client = TestClient(app)
 
 
 def test_successful_lookup_normalizes_tracking_number() -> None:
     response = client.post(
-        "/api/tracking/lookup",
+        "/api/tracking",
         json={"tracking_number": " 1z999aa10 123456784 "},
     )
 
@@ -95,7 +102,7 @@ def test_lookup_returns_carrier_specific_mock_data(
     latest_location: str,
 ) -> None:
     response = client.post(
-        "/api/tracking/lookup",
+        "/api/tracking",
         json={"tracking_number": tracking_number},
     )
 
@@ -118,7 +125,7 @@ def test_lookup_returns_carrier_specific_mock_data(
 
 def test_lookup_allows_local_frontend_origin() -> None:
     response = client.options(
-        "/api/tracking/lookup",
+        "/api/tracking",
         headers={
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "POST",
@@ -144,7 +151,7 @@ def test_lookup_allows_local_frontend_origin() -> None:
 def test_lookup_rejects_missing_or_empty_tracking_number(
     payload: dict[str, str],
 ) -> None:
-    response = client.post("/api/tracking/lookup", json=payload)
+    response = client.post("/api/tracking", json=payload)
 
     assert response.status_code == 422
 
@@ -162,7 +169,7 @@ def test_lookup_rejects_unsupported_tracking_number(
     tracking_number: str,
 ) -> None:
     response = client.post(
-        "/api/tracking/lookup",
+        "/api/tracking",
         json={"tracking_number": tracking_number},
     )
 
@@ -185,11 +192,64 @@ def test_lookup_rejects_unsupported_tracking_number(
         ("1234567890123456789012", "FedEx"),
         ("1234567890", "DHL"),
         ("JJD1234567890123456", "DHL"),
-        ("ABC123456", "Unknown"),
     ],
 )
 def test_carrier_detection(
     tracking_number: str,
     expected_carrier: str,
 ) -> None:
-    assert detect_carrier(tracking_number) == expected_carrier
+    normalized = normalize_tracking_number(tracking_number)
+    assert detect_carrier(normalized).name == expected_carrier
+
+
+def test_carrier_detection_rejects_unsupported_number() -> None:
+    with pytest.raises(UnsupportedTrackingNumberError):
+        detect_carrier("ABC123456")
+
+
+def test_detector_rejects_ambiguous_matches() -> None:
+    class MatchingAdapter:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def supports_tracking_number(self, tracking_number: str) -> bool:
+            return True
+
+        def track(self, tracking_number: str):
+            raise AssertionError("Ambiguous adapters must not be called")
+
+    with pytest.raises(AmbiguousCarrierError):
+        detect_carrier(
+            "AMBIGUOUS",
+            (MatchingAdapter("First"), MatchingAdapter("Second")),
+        )
+
+
+def test_legacy_lookup_route_remains_available() -> None:
+    response = client.post(
+        "/api/tracking/lookup",
+        json={"tracking_number": "1Z999AA10123456784"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["carrier"] == "UPS"
+
+
+def test_carrier_adapter_failure_returns_clean_gateway_error() -> None:
+    class FailingTrackingService:
+        def track(self, tracking_number: str, user_id: int):
+            raise CarrierAdapterError("mock carrier outage")
+
+    app.dependency_overrides[get_tracking_service] = FailingTrackingService
+    try:
+        response = client.post(
+            "/api/tracking",
+            json={"tracking_number": "1Z999AA10123456784"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_tracking_service, None)
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "The carrier tracking service is temporarily unavailable"
+    }

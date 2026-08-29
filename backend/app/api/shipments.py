@@ -3,19 +3,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_tracking_service
+from app.api.serialization import shipment_detail_response
+from app.api.tracking_errors import tracking_http_error
+from app.carriers.base import TrackingPipelineError
 from app.database import get_database_session
 from app.models import User
-from app.schemas.tracking import (
-    ShipmentDetailResponse,
-    ShipmentResponse,
-    TrackingEventResponse,
-)
+from app.schemas.tracking import ShipmentDetailResponse, ShipmentResponse
 from app.services.shipment_service import (
     delete_shipment,
     get_shipment,
     list_shipments,
-    ordered_tracking_events,
+)
+from app.services.tracking_service import (
+    TrackingPersistenceError,
+    TrackingService,
 )
 
 router = APIRouter(prefix="/api/shipments", tags=["shipments"])
@@ -47,13 +49,30 @@ def read_shipment(
             detail="Shipment not found",
         )
 
-    events = ordered_tracking_events(shipment)
-    return ShipmentDetailResponse(
-        **ShipmentResponse.model_validate(shipment).model_dump(),
-        tracking_events=[
-            TrackingEventResponse.model_validate(event) for event in events
-        ],
-    )
+    return shipment_detail_response(shipment)
+
+
+@router.post(
+    "/{shipment_id}/refresh",
+    response_model=ShipmentDetailResponse,
+)
+def refresh_shipment(
+    shipment_id: int,
+    tracking_service: TrackingService = Depends(get_tracking_service),
+    current_user: User = Depends(get_current_user),
+) -> ShipmentDetailResponse:
+    """Refresh an owned shipment through the centralized tracking pipeline."""
+    try:
+        shipment = tracking_service.refresh(shipment_id, current_user.id)
+    except (TrackingPipelineError, TrackingPersistenceError) as error:
+        raise tracking_http_error(error) from error
+
+    if shipment is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shipment not found",
+        )
+    return shipment_detail_response(shipment)
 
 
 @router.delete(

@@ -1,54 +1,39 @@
-"""Tracking lookup API routes."""
+"""Authenticated tracking pipeline API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_current_user
-from app.database import get_database_session
+from app.api.dependencies import get_current_user, get_tracking_service
+from app.api.serialization import shipment_detail_response
+from app.api.tracking_errors import tracking_http_error
+from app.carriers.base import TrackingPipelineError
 from app.models import User
-from app.schemas.tracking import (
-    TrackingEventResponse,
-    TrackingLookupRequest,
-    TrackingLookupResponse,
-    TrackingLookupResult,
-)
-from app.services.carrier_detection import detect_carrier
-from app.services.mock_tracking import get_mock_tracking_data
-from app.services.shipment_service import (
-    ordered_tracking_events,
-    save_shipment,
+from app.schemas.tracking import ShipmentDetailResponse, TrackingLookupRequest
+from app.services.tracking_service import (
+    TrackingPersistenceError,
+    TrackingService,
 )
 
 router = APIRouter(prefix="/api/tracking", tags=["tracking"])
 
 
-@router.post("/lookup", response_model=TrackingLookupResult)
-def lookup_tracking(
+@router.post("", response_model=ShipmentDetailResponse)
+@router.post(
+    "/lookup",
+    response_model=ShipmentDetailResponse,
+    deprecated=True,
+)
+def track_package(
     payload: TrackingLookupRequest,
-    session: Session = Depends(get_database_session),
+    tracking_service: TrackingService = Depends(get_tracking_service),
     current_user: User = Depends(get_current_user),
-) -> TrackingLookupResult:
-    """Return mock shipment data and persist it for later retrieval."""
-    carrier = detect_carrier(payload.tracking_number)
-    mock_data = get_mock_tracking_data(carrier)
-    if mock_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Unsupported or invalid tracking number",
+) -> ShipmentDetailResponse:
+    """Detect, track, and idempotently save an authenticated user's package."""
+    try:
+        shipment = tracking_service.track(
+            payload.tracking_number,
+            current_user.id,
         )
+    except (TrackingPipelineError, TrackingPersistenceError) as error:
+        raise tracking_http_error(error) from error
 
-    lookup = TrackingLookupResponse(
-        tracking_number=payload.tracking_number,
-        carrier=carrier,
-        status=mock_data.status,
-        estimated_delivery=mock_data.estimated_delivery,
-        latest_update=mock_data.latest_update,
-    )
-    shipment = save_shipment(session, lookup, current_user.id)
-    return TrackingLookupResult(
-        **TrackingLookupResponse.model_validate(shipment).model_dump(),
-        tracking_events=[
-            TrackingEventResponse.model_validate(event)
-            for event in ordered_tracking_events(shipment)
-        ],
-    )
+    return shipment_detail_response(shipment)

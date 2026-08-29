@@ -219,7 +219,7 @@ Tracking and shipment-management endpoints require an authenticated session.
 The browser stores the signed session token in an HttpOnly cookie; the frontend
 does not use local storage for authentication.
 
-`POST /api/tracking/lookup` accepts a JSON body:
+`POST /api/tracking` accepts a JSON body:
 
 ```json
 {
@@ -227,12 +227,15 @@ does not use local storage for authentication.
 }
 ```
 
-The endpoint removes whitespace, detects a likely carrier, and returns mock
-shipment details with a newest-first `tracking_events` array. Successful
-lookups are saved to PostgreSQL, and another lookup for the same tracking
-number updates the existing row without duplicating events. Unsupported or
-invalid formats return a 422 response. The endpoint does not call a carrier
-API.
+The tracking pipeline removes whitespace, normalizes case, requires exactly
+one matching carrier adapter, and returns mock shipment details with a
+newest-first `tracking_events` array. Successful lookups are saved to
+PostgreSQL for the authenticated user. Repeating a lookup updates that user's
+existing row without duplicating events; a different user may save the same
+number independently. Unsupported, invalid, or ambiguous formats return a 422
+response. The compatibility route `POST /api/tracking/lookup` remains
+available, but new clients should use `POST /api/tracking`. Neither endpoint
+calls a real carrier API.
 
 Use these deterministic mock tracking numbers during development:
 
@@ -256,6 +259,15 @@ Retrieve a shipment using the `id` returned by the list endpoint:
 ```bash
 curl http://localhost:8000/api/shipments/1
 ```
+
+Refresh an owned shipment through the same tracking pipeline:
+
+```bash
+curl -X POST http://localhost:8000/api/shipments/1/refresh
+```
+
+Refresh updates current shipment fields and only inserts carrier events that
+are not already stored for that shipment.
 
 Delete one shipment and its related tracking history:
 

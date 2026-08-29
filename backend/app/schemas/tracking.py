@@ -2,30 +2,16 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TrackingLookupRequest(BaseModel):
     """Payload accepted by the mock tracking lookup endpoint."""
 
     tracking_number: str = Field(
-        min_length=1,
-        max_length=100,
+        max_length=200,
         examples=["1Z999AA10123456784"],
     )
-
-    @field_validator("tracking_number", mode="before")
-    @classmethod
-    def normalize_tracking_number(cls, value: object) -> object:
-        """Remove whitespace and reject values that contain no characters."""
-        if not isinstance(value, str):
-            return value
-
-        normalized = "".join(value.split()).upper()
-        if not normalized:
-            raise ValueError("tracking_number must not be empty")
-
-        return normalized
 
 
 class TrackingLookupResponse(BaseModel):
@@ -60,12 +46,6 @@ class TrackingEventResponse(BaseModel):
     location: str | None
     event_time: datetime
     created_at: datetime
-
-
-class TrackingLookupResult(TrackingLookupResponse):
-    """A mock lookup response with the package's tracking history."""
-
-    tracking_events: list[TrackingEventResponse]
 
 
 class ShipmentDetailResponse(ShipmentResponse):
