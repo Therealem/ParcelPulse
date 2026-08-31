@@ -93,6 +93,44 @@ class AuthSettings(EnvironmentSettings):
         return self.token_expire_minutes * 60
 
 
+class TrackingProviderSettings(EnvironmentSettings):
+    """Configuration for selecting a tracking data provider."""
+
+    tracking_provider: Literal["mock", "shippo", "easypost"] = Field(
+        default="mock",
+        validation_alias="TRACKING_PROVIDER",
+    )
+    shippo_api_token: SecretStr | None = Field(
+        default=None,
+        validation_alias="SHIPPO_API_TOKEN",
+    )
+    easypost_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias="EASYPOST_API_KEY",
+    )
+
+    @field_validator("tracking_provider", mode="before")
+    @classmethod
+    def normalize_provider_name(cls, value: object) -> object:
+        """Normalize environment input while retaining strict choices."""
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator(
+        "shippo_api_token",
+        "easypost_api_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_provider_secret(cls, value: object) -> object:
+        """Treat a blank provider secret as missing without exposing it."""
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
+
+
 @lru_cache(maxsize=1)
 def get_application_settings() -> ApplicationSettings:
     """Return cached non-secret application settings."""
@@ -103,3 +141,9 @@ def get_application_settings() -> ApplicationSettings:
 def get_auth_settings() -> AuthSettings:
     """Return cached authentication settings."""
     return AuthSettings()
+
+
+@lru_cache(maxsize=1)
+def get_tracking_provider_settings() -> TrackingProviderSettings:
+    """Return cached tracking provider settings from backend/.env."""
+    return TrackingProviderSettings()

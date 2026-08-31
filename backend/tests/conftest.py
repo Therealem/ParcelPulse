@@ -13,6 +13,7 @@ os.environ.setdefault(
     "AUTH_SECRET_KEY",
     "parcelpulse-test-secret-key-at-least-32-characters",
 )
+os.environ["TRACKING_PROVIDER"] = "mock"
 
 from app.api.dependencies import get_current_user
 from app.database import get_database_session

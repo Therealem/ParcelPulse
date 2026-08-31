@@ -12,6 +12,7 @@ from app.services.tracking_service import (
     TrackingPersistenceError,
     TrackingService,
 )
+from app.tracking_providers.base import TrackingProviderError
 
 router = APIRouter(prefix="/api/tracking", tags=["tracking"])
 
@@ -24,8 +25,8 @@ router = APIRouter(prefix="/api/tracking", tags=["tracking"])
 )
 def track_package(
     payload: TrackingLookupRequest,
-    tracking_service: TrackingService = Depends(get_tracking_service),
     current_user: User = Depends(get_current_user),
+    tracking_service: TrackingService = Depends(get_tracking_service),
 ) -> ShipmentDetailResponse:
     """Detect, track, and idempotently save an authenticated user's package."""
     try:
@@ -33,7 +34,11 @@ def track_package(
             payload.tracking_number,
             current_user.id,
         )
-    except (TrackingPipelineError, TrackingPersistenceError) as error:
+    except (
+        TrackingPipelineError,
+        TrackingProviderError,
+        TrackingPersistenceError,
+    ) as error:
         raise tracking_http_error(error) from error
 
     return shipment_detail_response(shipment)

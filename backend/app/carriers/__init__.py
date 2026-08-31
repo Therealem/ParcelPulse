@@ -6,12 +6,11 @@ from app.carriers.base import (
     CarrierAdapterError,
     EmptyTrackingNumberError,
     InvalidTrackingNumberError,
-    TrackingEventResult,
-    TrackingResult,
     UnsupportedTrackingNumberError,
 )
 from app.carriers.detector import detect_carrier, normalize_tracking_number
 from app.carriers.registry import CARRIER_ADAPTERS
+from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 __all__ = [
     "AmbiguousCarrierError",

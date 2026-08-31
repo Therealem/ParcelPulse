@@ -5,9 +5,8 @@ from datetime import UTC, datetime
 
 from app.carriers.base import (
     CarrierAdapterError,
-    TrackingEventResult,
-    TrackingResult,
 )
+from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 UPS_TRACKING_PATTERN = re.compile(r"^1Z[A-Z0-9]{16}$")
 UPS_MOCK_TRACKING_NUMBER = "1Z999AA10123456784"

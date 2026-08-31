@@ -1,20 +1,38 @@
 """Reusable FastAPI authentication dependencies."""
 
 from fastapi import Depends, HTTPException, Request, status
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.config import AuthSettings, get_auth_settings
+from app.api.tracking_errors import tracking_http_error
+from app.config import (
+    AuthSettings,
+    get_auth_settings,
+    get_tracking_provider_settings,
+)
 from app.database import get_database_session
 from app.models import User
 from app.services.auth_service import decode_session_token
 from app.services.tracking_service import TrackingService
+from app.tracking_providers.base import ProviderConfigurationError
+from app.tracking_providers.registry import create_tracking_provider
 
 
 def get_tracking_service(
     session: Session = Depends(get_database_session),
 ) -> TrackingService:
     """Build the request-scoped tracking pipeline service."""
-    return TrackingService(session)
+    try:
+        settings = get_tracking_provider_settings()
+        provider = create_tracking_provider(settings)
+    except ValidationError as error:
+        configuration_error = ProviderConfigurationError(
+            "Tracking provider configuration is invalid"
+        )
+        raise tracking_http_error(configuration_error) from error
+    except ProviderConfigurationError as error:
+        raise tracking_http_error(error) from error
+    return TrackingService(session, provider)
 
 
 def get_current_user(

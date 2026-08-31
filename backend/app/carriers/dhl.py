@@ -5,9 +5,8 @@ from datetime import UTC, datetime
 
 from app.carriers.base import (
     CarrierAdapterError,
-    TrackingEventResult,
-    TrackingResult,
 )
+from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 DHL_TRACKING_PATTERN = re.compile(
     r"^(?:\d{10}|JJD\d{16,20}|JD\d{16,20}|GM\d{16,18})$"

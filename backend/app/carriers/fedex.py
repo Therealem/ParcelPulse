@@ -5,10 +5,9 @@ from datetime import UTC, datetime
 
 from app.carriers.base import (
     CarrierAdapterError,
-    TrackingEventResult,
-    TrackingResult,
 )
 from app.carriers.usps import is_usps_tracking_number
+from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 FEDEX_TRACKING_PATTERN = re.compile(r"^(?:\d{12}|\d{15}|\d{20}|\d{22})$")
 FEDEX_MOCK_TRACKING_NUMBER = "123456789012"

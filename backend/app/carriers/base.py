@@ -1,8 +1,8 @@
-"""Shared contracts and normalized result types for carrier adapters."""
+"""Carrier detection contracts and errors."""
 
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Protocol, runtime_checkable
+
+from app.tracking_providers.base import TrackingResult
 
 
 class TrackingPipelineError(Exception):
@@ -27,28 +27,6 @@ class AmbiguousCarrierError(TrackingPipelineError):
 
 class CarrierAdapterError(TrackingPipelineError):
     """Raised when a selected carrier adapter cannot produce a result."""
-
-
-@dataclass(frozen=True, slots=True)
-class TrackingEventResult:
-    """One normalized event returned by a carrier adapter."""
-
-    status: str
-    description: str
-    location: str | None
-    event_time: datetime
-
-
-@dataclass(frozen=True, slots=True)
-class TrackingResult:
-    """Carrier-neutral tracking data returned by every adapter."""
-
-    tracking_number: str
-    carrier: str
-    status: str
-    estimated_delivery: str
-    latest_update: str
-    events: tuple[TrackingEventResult, ...]
 
 
 @runtime_checkable

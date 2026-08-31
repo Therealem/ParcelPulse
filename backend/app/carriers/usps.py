@@ -5,9 +5,8 @@ from datetime import UTC, datetime
 
 from app.carriers.base import (
     CarrierAdapterError,
-    TrackingEventResult,
-    TrackingResult,
 )
+from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 USPS_DOMESTIC_PATTERN = re.compile(r"^9[2345]\d{18,20}$")
 USPS_INTERNATIONAL_PATTERN = re.compile(r"^[A-Z]{2}\d{9}US$")

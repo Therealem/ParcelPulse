@@ -1,8 +1,10 @@
 # ParcelPulse
 
 ParcelPulse is a universal package tracking platform in development. The
-current application provides mock multi-carrier lookups, PostgreSQL-backed
-saved shipments, and shipment detail pages with tracking history.
+current application provides provider-backed multi-carrier lookups,
+PostgreSQL-backed saved shipments, and shipment detail pages with tracking
+history. Deterministic mock tracking remains the default, while EasyPost or
+Shippo can be enabled explicitly for real tracking data.
 
 ## Project structure
 
@@ -12,10 +14,12 @@ ParcelPulse/
 |-- backend/
 |   |-- app/
 |   |   |-- api/
+|   |   |-- carriers/
 |   |   |-- database/
 |   |   |-- models/
 |   |   |-- schemas/
 |   |   |-- services/
+|   |   |-- tracking_providers/
 |   |   `-- main.py    # FastAPI application entry point
 |   |-- alembic/       # Versioned database migrations
 |   |-- alembic.ini
@@ -77,12 +81,15 @@ AUTH_COOKIE_NAME=parcelpulse_session
 AUTH_COOKIE_SECURE=false
 AUTH_COOKIE_SAMESITE=lax
 FRONTEND_ORIGIN=http://localhost:3000
+SHIPPO_API_TOKEN=replace_with_shippo_api_token
+EASYPOST_API_KEY=replace_with_easypost_api_key
+TRACKING_PROVIDER=mock
 ```
 
-The database password and authentication secret belong only in `backend/.env`;
-that file is ignored by Git. Generate a unique random authentication secret for
-each deployed environment. Use `AUTH_COOKIE_SECURE=true` when serving the API
-over HTTPS.
+The database password, authentication secret, and provider API credentials
+belong only in `backend/.env`; that file is ignored by Git. Generate a unique
+random authentication secret for each deployed environment. Use
+`AUTH_COOKIE_SECURE=true` when serving the API over HTTPS.
 
 Generate a local authentication secret without committing it:
 
@@ -228,16 +235,72 @@ does not use local storage for authentication.
 ```
 
 The tracking pipeline removes whitespace, normalizes case, requires exactly
-one matching carrier adapter, and returns mock shipment details with a
-newest-first `tracking_events` array. Successful lookups are saved to
+one matching carrier adapter, and asks the configured provider for normalized
+shipment details and tracking events. Successful lookups are saved to
 PostgreSQL for the authenticated user. Repeating a lookup updates that user's
 existing row without duplicating events; a different user may save the same
 number independently. Unsupported, invalid, or ambiguous formats return a 422
 response. The compatibility route `POST /api/tracking/lookup` remains
-available, but new clients should use `POST /api/tracking`. Neither endpoint
-calls a real carrier API.
+available, but new clients should use `POST /api/tracking`.
 
-Use these deterministic mock tracking numbers during development:
+### Tracking providers
+
+`TRACKING_PROVIDER` controls the backend provider and supports three values:
+
+- `mock` is the default when the variable is absent. It uses the deterministic
+  UPS, USPS, FedEx, and DHL adapters and never makes an external request.
+- `shippo` uses Shippo's authenticated tracking endpoint for real provider
+  data while retaining ParcelPulse carrier detection and persistence.
+- `easypost` creates a standalone EasyPost Tracker for real provider data while
+  retaining ParcelPulse carrier detection and persistence.
+
+To configure EasyPost locally, place these values in `backend/.env`:
+
+```env
+TRACKING_PROVIDER=easypost
+EASYPOST_API_KEY=your_easypost_test_or_production_key
+```
+
+FastAPI sends the normalized tracking number and detected carrier to EasyPost's
+standalone Tracker API. The returned status, delivery estimate, carrier, and
+tracking details are normalized into the same ParcelPulse result used by mock
+and Shippo modes. See EasyPost's official
+[authentication guide](https://docs.easypost.com/docs/authentication) and
+[Tracker API reference](https://docs.easypost.com/docs/trackers).
+
+To configure Shippo locally, place these values in `backend/.env`:
+
+```env
+TRACKING_PROVIDER=shippo
+SHIPPO_API_TOKEN=your_shippo_test_or_live_token
+```
+
+Store only the raw `shippo_test_...` or `shippo_live_...` value. Do not include
+the `ShippoToken` prefix in `backend/.env`; ParcelPulse adds that authorization
+scheme to the outbound request.
+
+A Shippo test key can use Shippo's predefined test tracking tokens. Tracking
+an arbitrary real package requires live-mode data and a valid live key.
+
+Never place an EasyPost key or Shippo token in `.env.example`, frontend
+environment files, browser code, logs, screenshots, or commits. API keys must
+remain in `backend/.env`. ParcelPulse sends credentials only from FastAPI to
+the configured provider over HTTPS. See Shippo's official
+[authentication guide](https://docs.goshippo.com/docs/guides_general/authentication/)
+and [tracking endpoint reference](https://docs.goshippo.com/api-reference/tracking-status/get-a-tracking-status).
+
+After changing provider configuration, restart FastAPI. To switch safely back
+to deterministic development data:
+
+```env
+TRACKING_PROVIDER=mock
+```
+
+`EASYPOST_API_KEY` and `SHIPPO_API_TOKEN` are not required in mock mode.
+Provider failures are returned as stable API errors; raw provider response
+details and credentials are never sent to the frontend.
+
+Use these deterministic tracking numbers when `TRACKING_PROVIDER=mock`:
 
 | Carrier | Tracking number |
 | --- | --- |
@@ -322,12 +385,11 @@ never contain secrets.
 2. Start Next.js on port 3000 in a second terminal.
 3. Open [http://localhost:3000/register](http://localhost:3000/register) and
    create an account, or sign in at `/login`.
-4. Return home, enter any mock tracking number from the table above, and select **Track
-   Package**.
-5. Confirm the result card shows the matching carrier and its carrier-specific
-   status, estimate, and latest update.
-6. Open **View Shipments**, select the saved shipment, and confirm its four-event
-   timeline includes realistic locations and is ordered newest to oldest.
+4. Return home, enter any mock tracking number from the table above, and select
+   **Track Package**.
+5. Confirm ParcelPulse opens the saved shipment detail page with the matching
+   carrier, status, estimate, latest update, and tracking timeline.
+6. Open **View Shipments** and confirm the saved shipment is present.
 
 The saved shipments dashboard also supports partial tracking-number search,
 carrier and status filters, and sorting by newest saved, oldest saved, or
@@ -339,4 +401,5 @@ confirmed **Delete Shipment** action.
 
 This repository intentionally does not include caches, containers, cloud
 infrastructure, password reset/email verification, multi-factor authentication,
-or real carrier API integrations.
+or direct carrier-specific API integrations. EasyPost and Shippo are optional
+real tracking providers; mock mode remains the safe development default.

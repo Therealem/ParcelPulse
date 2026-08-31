@@ -19,6 +19,7 @@ from app.services.tracking_service import (
     TrackingPersistenceError,
     TrackingService,
 )
+from app.tracking_providers.base import TrackingProviderError
 
 router = APIRouter(prefix="/api/shipments", tags=["shipments"])
 
@@ -58,13 +59,17 @@ def read_shipment(
 )
 def refresh_shipment(
     shipment_id: int,
-    tracking_service: TrackingService = Depends(get_tracking_service),
     current_user: User = Depends(get_current_user),
+    tracking_service: TrackingService = Depends(get_tracking_service),
 ) -> ShipmentDetailResponse:
     """Refresh an owned shipment through the centralized tracking pipeline."""
     try:
         shipment = tracking_service.refresh(shipment_id, current_user.id)
-    except (TrackingPipelineError, TrackingPersistenceError) as error:
+    except (
+        TrackingPipelineError,
+        TrackingProviderError,
+        TrackingPersistenceError,
+    ) as error:
         raise tracking_http_error(error) from error
 
     if shipment is None:

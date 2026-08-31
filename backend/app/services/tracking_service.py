@@ -10,13 +10,18 @@ from sqlalchemy.orm import Session, selectinload
 from app.carriers import (
     CARRIER_ADAPTERS,
     CarrierAdapter,
-    CarrierAdapterError,
-    TrackingEventResult,
-    TrackingResult,
     detect_carrier,
     normalize_tracking_number,
 )
 from app.models import Shipment, TrackingEvent
+from app.tracking_providers.base import (
+    MalformedProviderResponseError,
+    ProviderUnavailableError,
+    TrackingEventResult,
+    TrackingProvider,
+    TrackingProviderError,
+    TrackingResult,
+)
 
 
 class TrackingPersistenceError(Exception):
@@ -45,16 +50,21 @@ class TrackingService:
     def __init__(
         self,
         session: Session,
+        provider: TrackingProvider,
         adapters: Sequence[CarrierAdapter] = CARRIER_ADAPTERS,
     ) -> None:
         self.session = session
+        self.provider = provider
         self.adapters = adapters
 
     def track(self, tracking_number: str, user_id: int) -> Shipment:
         """Look up and upsert one authenticated user's shipment."""
         normalized_number = normalize_tracking_number(tracking_number)
         adapter = detect_carrier(normalized_number, self.adapters)
-        result = self._call_adapter(adapter, normalized_number)
+        result = self._call_provider(
+            normalized_number,
+            adapter.name,
+        )
 
         shipment = self._find_owned_shipment(user_id, normalized_number)
         shipment = self._apply_result(shipment, result, user_id)
@@ -101,26 +111,23 @@ class TrackingService:
             return None
         return self.track(shipment.tracking_number, user_id)
 
-    def _call_adapter(
+    def _call_provider(
         self,
-        adapter: CarrierAdapter,
         tracking_number: str,
+        carrier: str,
     ) -> TrackingResult:
         try:
-            result = adapter.track(tracking_number)
-        except CarrierAdapterError:
+            result = self.provider.track(tracking_number, carrier)
+        except TrackingProviderError:
             raise
         except Exception as error:
-            raise CarrierAdapterError(
-                f"{adapter.name} tracking adapter failed"
+            raise ProviderUnavailableError(
+                "The tracking provider failed unexpectedly"
             ) from error
 
-        if (
-            result.tracking_number != tracking_number
-            or result.carrier != adapter.name
-        ):
-            raise CarrierAdapterError(
-                f"{adapter.name} returned an invalid tracking result"
+        if result.tracking_number != tracking_number or not result.carrier:
+            raise MalformedProviderResponseError(
+                "The tracking provider returned an invalid result"
             )
         return result
 
@@ -161,30 +168,34 @@ class TrackingService:
             shipment.latest_update = result.latest_update
             shipment.updated_at = datetime.now(UTC)
 
-        self._merge_events(shipment, result.events)
+        self._sync_events(shipment, result.events)
         return shipment
 
     @staticmethod
-    def _merge_events(
+    def _sync_events(
         shipment: Shipment,
         events: tuple[TrackingEventResult, ...],
     ) -> None:
-        existing = {
-            _event_identity(
-                event.status,
-                event.description,
-                event.event_time,
+        """Reconcile saved events to the provider's canonical history."""
+        canonical = {
+            _event_identity(event.status, event.description, event.event_time): (
+                event
             )
-            for event in shipment.tracking_events
+            for event in events
         }
-        for event in events:
+        for persisted in tuple(shipment.tracking_events):
             identity = _event_identity(
-                event.status,
-                event.description,
-                event.event_time,
+                persisted.status,
+                persisted.description,
+                persisted.event_time,
             )
-            if identity in existing:
+            current = canonical.pop(identity, None)
+            if current is None:
+                shipment.tracking_events.remove(persisted)
                 continue
+            persisted.location = current.location
+
+        for event in canonical.values():
             shipment.tracking_events.append(
                 TrackingEvent(
                     status=event.status,
@@ -193,4 +204,3 @@ class TrackingService:
                     event_time=event.event_time,
                 )
             )
-            existing.add(identity)
