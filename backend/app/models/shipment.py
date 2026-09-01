@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, utc_now
 
 if TYPE_CHECKING:
+    from app.models.notification import Notification
     from app.models.tracking_event import TrackingEvent
     from app.models.user import User
 
@@ -62,5 +63,9 @@ class Shipment(Base):
     tracking_events: Mapped[list["TrackingEvent"]] = relationship(
         back_populates="shipment",
         cascade="all, delete-orphan",
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
+        back_populates="shipment",
+        passive_deletes=True,
     )
     user: Mapped["User | None"] = relationship(back_populates="shipments")

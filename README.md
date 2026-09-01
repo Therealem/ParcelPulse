@@ -81,7 +81,10 @@ AUTH_COOKIE_NAME=parcelpulse_session
 AUTH_COOKIE_SECURE=false
 AUTH_COOKIE_SAMESITE=lax
 FRONTEND_ORIGIN=http://localhost:3000
+APP_ENV=development
+ENABLE_DEV_NOTIFICATION_ENDPOINT=false
 SHIPPO_API_TOKEN=replace_with_shippo_api_token
+SHIPPO_WEBHOOK_SECRET=replace_with_shippo_webhook_secret
 EASYPOST_API_KEY=replace_with_easypost_api_key
 TRACKING_PROVIDER=mock
 ```
@@ -143,24 +146,30 @@ FastAPI, take a backup, and verify that it is at the initial revision:
 ..\.venv\Scripts\python.exe -m alembic current
 ```
 
-It should report `20260827_0001`. The authentication migration can then be
+It should report `20260827_0001`. All later additive migrations can then be
 applied normally:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-The migration creates `users`, adds a nullable `shipments.user_id`, and changes
-tracking-number uniqueness from global to per-user. Existing shipment and event
-rows are not deleted or recreated. Existing shipments retain `user_id = NULL`,
-which preserves them as unassigned legacy records while keeping them out of all
-user-facing API queries. Confirm the new revision afterward:
+The migration chain creates `users`, adds nullable shipment ownership, and adds
+the independent `notifications` table. Existing shipment and event rows are
+not deleted or recreated. Existing shipments retain `user_id = NULL`, which
+preserves them as unassigned legacy records while keeping them out of all
+user-facing API queries.
+
+For a database already at authentication revision `20260827_0002`, revision
+`20260831_0003` only creates the empty notifications table, its foreign keys,
+deduplication constraint, and indexes. Stop FastAPI, take a backup, verify the
+current revision, and then apply it with `alembic upgrade head`. Confirm the
+new revision afterward:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m alembic current
 ```
 
-It should report `20260827_0002 (head)`. Finally, confirm that no model changes
+It should report `20260831_0003 (head)`. Finally, confirm that no model changes
 are missing from the migration chain:
 
 ```powershell
@@ -300,6 +309,44 @@ TRACKING_PROVIDER=mock
 Provider failures are returned as stable API errors; raw provider response
 details and credentials are never sent to the frontend.
 
+### Shippo webhooks (development)
+
+ParcelPulse accepts Shippo `track_updated` notifications at:
+
+```text
+POST /api/webhooks/shippo
+```
+
+Configure that route as a public HTTPS URL in Shippo, for example
+`https://your-development-host.example/api/webhooks/shippo`. A valid tracker
+notification updates every user-owned saved copy with the same normalized
+tracking number and carrier. It never creates shipments, changes ownership,
+or touches legacy rows without an owner. The event timeline is reconciled to
+Shippo's complete current history, so repeat deliveries are idempotent and old
+mock events are removed.
+
+Shippo's current public webhook reference documents the event envelope and
+callback URL, but does not document an inbound signature or custom request
+header. For a deployment behind a trusted webhook relay or reverse proxy,
+configure an independent secret in `backend/.env`:
+
+```env
+SHIPPO_WEBHOOK_SECRET=generate_a_unique_random_value
+```
+
+The relay must add that value in the
+`X-ParcelPulse-Webhook-Secret` request header. ParcelPulse compares it in
+constant time and rejects missing or incorrect values. Leave the variable
+unset for direct local Shippo delivery; use HTTPS and protect the public route
+at the network edge. Do not place the secret in a URL, frontend file, log, or
+commit. The documented placeholder in `.env.example` is treated as
+unconfigured.
+
+See Shippo's official
+[webhook creation reference](https://docs.goshippo.com/api-reference/webhooks/create-a-new-webhook)
+and
+[tracking webhook reference](https://docs.goshippo.com/api-reference/tracking-status/register-a-tracking-webhook).
+
 Use these deterministic tracking numbers when `TRACKING_PROVIDER=mock`:
 
 | Carrier | Tracking number |
@@ -345,6 +392,45 @@ The single-shipment response includes a `tracking_events` array ordered newest
 to oldest. In the frontend, select any card at
 [http://localhost:3000/shipments](http://localhost:3000/shipments) to open its
 detail page and tracking timeline.
+
+### In-app notifications
+
+ParcelPulse creates owner-scoped notifications only when a saved shipment
+enters a meaningful state such as out for delivery, delivered, delayed,
+delivery exception, or returned to sender. Ordinary carrier scans do not create
+alerts. Manual refreshes and Shippo webhooks use the same transition and
+deduplication service.
+
+Authenticated notification endpoints are:
+
+```text
+GET   /api/notifications
+GET   /api/notifications/unread-count
+PATCH /api/notifications/{id}/read
+PATCH /api/notifications/read-all
+```
+
+The frontend notification bell opens
+[http://localhost:3000/notifications](http://localhost:3000/notifications),
+where users can review alerts and mark one or all as read. Notification API
+queries always filter by the authenticated user, and attempts to update another
+user's notification return 404.
+
+For local end-to-end UI verification only, an authenticated test-notification
+route can be enabled explicitly in `backend/.env`:
+
+```env
+APP_ENV=development
+ENABLE_DEV_NOTIFICATION_ENDPOINT=true
+```
+
+After restarting FastAPI, `POST /api/notifications/dev/test` creates one
+unread test notification for the current user with no shipment association.
+The route is omitted from OpenAPI and returns 404 unless both development mode
+and the opt-in flag are active. When enabled, the notifications page displays
+a **Create test notification** button that uses the existing authenticated
+browser session and refreshes the list and unread badge automatically. Keep the
+flag false in production.
 
 To verify the mock tracking events directly in PostgreSQL, connect with `psql`
 and run:

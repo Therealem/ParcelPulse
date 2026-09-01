@@ -9,8 +9,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.auth import router as auth_router
+from app.api.notifications import router as notifications_router
 from app.api.shipments import router as shipments_router
 from app.api.tracking import router as tracking_router
+from app.api.webhooks import router as webhooks_router
 from app.config import get_application_settings
 from app.database import get_engine
 
@@ -32,8 +34,10 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(notifications_router)
 app.include_router(tracking_router)
 app.include_router(shipments_router)
+app.include_router(webhooks_router)
 
 
 @app.get("/health", tags=["system"])

@@ -23,6 +23,14 @@ class EnvironmentSettings(BaseSettings):
 class ApplicationSettings(EnvironmentSettings):
     """Non-secret web application settings."""
 
+    app_environment: Literal["development", "test", "production"] = Field(
+        default="development",
+        validation_alias="APP_ENV",
+    )
+    enable_dev_notification_endpoint: bool = Field(
+        default=False,
+        validation_alias="ENABLE_DEV_NOTIFICATION_ENDPOINT",
+    )
     frontend_origin: str = Field(
         default="http://localhost:3000",
         min_length=1,
@@ -35,6 +43,14 @@ class ApplicationSettings(EnvironmentSettings):
         """Remove whitespace and a trailing slash for exact CORS matching."""
         if isinstance(value, str):
             return value.strip().rstrip("/")
+        return value
+
+    @field_validator("app_environment", mode="before")
+    @classmethod
+    def normalize_app_environment(cls, value: object) -> object:
+        """Normalize environment names while retaining strict choices."""
+        if isinstance(value, str):
+            return value.strip().lower()
         return value
 
 
@@ -131,6 +147,28 @@ class TrackingProviderSettings(EnvironmentSettings):
         return value
 
 
+class ShippoWebhookSettings(EnvironmentSettings):
+    """Optional verification settings for inbound Shippo webhooks."""
+
+    webhook_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias="SHIPPO_WEBHOOK_SECRET",
+    )
+
+    @field_validator("webhook_secret", mode="before")
+    @classmethod
+    def normalize_webhook_secret(cls, value: object) -> object:
+        """Treat blanks and documentation placeholders as unconfigured."""
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized or normalized.lower().startswith(
+            ("replace_", "paste_", "change_")
+        ):
+            return None
+        return normalized
+
+
 @lru_cache(maxsize=1)
 def get_application_settings() -> ApplicationSettings:
     """Return cached non-secret application settings."""
@@ -147,3 +185,9 @@ def get_auth_settings() -> AuthSettings:
 def get_tracking_provider_settings() -> TrackingProviderSettings:
     """Return cached tracking provider settings from backend/.env."""
     return TrackingProviderSettings()
+
+
+@lru_cache(maxsize=1)
+def get_shippo_webhook_settings() -> ShippoWebhookSettings:
+    """Return cached inbound webhook verification settings."""
+    return ShippoWebhookSettings()

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, utc_now
 
 if TYPE_CHECKING:
+    from app.models.notification import Notification
     from app.models.shipment import Shipment
 
 
@@ -47,6 +48,10 @@ class User(Base):
         server_default=func.now(),
     )
     shipments: Mapped[list["Shipment"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    notifications: Mapped[list["Notification"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )

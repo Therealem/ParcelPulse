@@ -14,6 +14,10 @@ from app.carriers import (
     normalize_tracking_number,
 )
 from app.models import Shipment, TrackingEvent
+from app.services.notification_service import (
+    NotificationPersistenceError,
+    create_shipment_transition_notification,
+)
 from app.tracking_providers.base import (
     MalformedProviderResponseError,
     ProviderUnavailableError,
@@ -26,6 +30,70 @@ from app.tracking_providers.base import (
 
 class TrackingPersistenceError(Exception):
     """Raised when normalized tracking data cannot be saved safely."""
+
+
+def apply_tracking_result(
+    shipment: Shipment,
+    result: TrackingResult,
+) -> bool:
+    """Reconcile one existing shipment to a canonical provider result."""
+    changed = False
+    field_values = {
+        "carrier": result.carrier,
+        "status": result.status,
+        "estimated_delivery": result.estimated_delivery,
+        "latest_update": result.latest_update,
+    }
+    for field, value in field_values.items():
+        if getattr(shipment, field) != value:
+            setattr(shipment, field, value)
+            changed = True
+
+    if sync_tracking_events(shipment, result.events):
+        changed = True
+    if changed:
+        shipment.updated_at = datetime.now(UTC)
+    return changed
+
+
+def sync_tracking_events(
+    shipment: Shipment,
+    events: tuple[TrackingEventResult, ...],
+) -> bool:
+    """Reconcile saved events to the provider's canonical history."""
+    changed = False
+    canonical = {
+        _event_identity(event.status, event.description, event.event_time): (
+            event
+        )
+        for event in events
+    }
+    for persisted in tuple(shipment.tracking_events):
+        identity = _event_identity(
+            persisted.status,
+            persisted.description,
+            persisted.event_time,
+        )
+        current = canonical.pop(identity, None)
+        if current is None:
+            shipment.tracking_events.remove(persisted)
+            changed = True
+            continue
+        if persisted.location != current.location:
+            persisted.location = current.location
+            changed = True
+
+    for event in canonical.values():
+        shipment.tracking_events.append(
+            TrackingEvent(
+                status=event.status,
+                description=event.description,
+                location=event.location,
+                event_time=event.event_time,
+            )
+        )
+        changed = True
+    return changed
 
 
 def _utc_event_time(value: datetime) -> datetime:
@@ -67,7 +135,13 @@ class TrackingService:
         )
 
         shipment = self._find_owned_shipment(user_id, normalized_number)
-        shipment = self._apply_result(shipment, result, user_id)
+        try:
+            shipment = self._apply_result(shipment, result, user_id)
+        except NotificationPersistenceError as error:
+            self.session.rollback()
+            raise TrackingPersistenceError(
+                "Tracking data could not be saved"
+            ) from error
 
         try:
             self.session.commit()
@@ -80,7 +154,13 @@ class TrackingService:
                 raise TrackingPersistenceError(
                     "Tracking data could not be saved"
                 ) from error
-            shipment = self._apply_result(shipment, result, user_id)
+            try:
+                shipment = self._apply_result(shipment, result, user_id)
+            except NotificationPersistenceError as retry_error:
+                self.session.rollback()
+                raise TrackingPersistenceError(
+                    "Tracking data could not be saved"
+                ) from retry_error
             try:
                 self.session.commit()
             except SQLAlchemyError as retry_error:
@@ -151,56 +231,27 @@ class TrackingService:
         result: TrackingResult,
         user_id: int,
     ) -> Shipment:
-        if shipment is None:
+        existing_shipment = shipment is not None
+        if not existing_shipment:
             shipment = Shipment(
                 user_id=user_id,
                 tracking_number=result.tracking_number,
-                carrier=result.carrier,
-                status=result.status,
-                estimated_delivery=result.estimated_delivery,
-                latest_update=result.latest_update,
+                carrier="",
+                status="",
+                estimated_delivery="",
+                latest_update="",
             )
             self.session.add(shipment)
-        else:
-            shipment.carrier = result.carrier
-            shipment.status = result.status
-            shipment.estimated_delivery = result.estimated_delivery
-            shipment.latest_update = result.latest_update
+        assert shipment is not None
+        if existing_shipment:
+            create_shipment_transition_notification(
+                self.session,
+                shipment,
+                result,
+            )
+        apply_tracking_result(shipment, result)
+        if existing_shipment:
+            # A user-triggered lookup/refresh records that it was attempted,
+            # while duplicate webhook deliveries remain persistence no-ops.
             shipment.updated_at = datetime.now(UTC)
-
-        self._sync_events(shipment, result.events)
         return shipment
-
-    @staticmethod
-    def _sync_events(
-        shipment: Shipment,
-        events: tuple[TrackingEventResult, ...],
-    ) -> None:
-        """Reconcile saved events to the provider's canonical history."""
-        canonical = {
-            _event_identity(event.status, event.description, event.event_time): (
-                event
-            )
-            for event in events
-        }
-        for persisted in tuple(shipment.tracking_events):
-            identity = _event_identity(
-                persisted.status,
-                persisted.description,
-                persisted.event_time,
-            )
-            current = canonical.pop(identity, None)
-            if current is None:
-                shipment.tracking_events.remove(persisted)
-                continue
-            persisted.location = current.location
-
-        for event in canonical.values():
-            shipment.tracking_events.append(
-                TrackingEvent(
-                    status=event.status,
-                    description=event.description,
-                    location=event.location,
-                    event_time=event.event_time,
-                )
-            )

@@ -154,60 +154,78 @@ class ShippoProvider:
                 "Shippo returned an invalid tracking payload"
             )
 
-        response_number = _required_string(payload, "tracking_number")
-        normalized_response_number = "".join(response_number.split()).upper()
-        if normalized_response_number != requested_tracking_number:
+        return normalize_shippo_tracking_payload(
+            payload,
+            expected_tracking_number=requested_tracking_number,
+        )
+
+
+def normalize_shippo_tracking_payload(
+    payload: Mapping[str, Any],
+    *,
+    expected_tracking_number: str | None = None,
+) -> TrackingResult:
+    """Normalize a Shippo tracker payload from HTTP or a webhook."""
+    response_number = _required_string(payload, "tracking_number")
+    normalized_response_number = "".join(response_number.split()).upper()
+    if not normalized_response_number or len(normalized_response_number) > 100:
+        raise MalformedProviderResponseError(
+            "Shippo returned an invalid tracking number"
+        )
+    if expected_tracking_number is not None:
+        normalized_expected = "".join(
+            expected_tracking_number.split()
+        ).upper()
+        if normalized_response_number != normalized_expected:
             raise MalformedProviderResponseError(
                 "Shippo returned a different tracking number"
             )
 
-        carrier_token = _required_string(payload, "carrier").lower()
-        carrier = _CARRIER_NAMES.get(carrier_token)
-        if carrier is None:
-            raise ProviderUnsupportedCarrierError(
-                "Shippo returned an unsupported carrier"
-            )
-
-        current = _required_mapping(payload, "tracking_status")
-        status = _normalize_status(current.get("status"))
-        latest_update = (
-            _optional_string(current.get("status_details")) or status
+    carrier_token = _required_string(payload, "carrier").lower()
+    carrier = _CARRIER_NAMES.get(carrier_token)
+    if carrier is None:
+        raise ProviderUnsupportedCarrierError(
+            "Shippo returned an unsupported carrier"
         )
-        estimated_delivery = _normalize_estimated_delivery(payload.get("eta"))
 
-        history = payload.get("tracking_history")
-        if not isinstance(history, list):
-            raise MalformedProviderResponseError(
-                "Shippo tracking history is invalid"
-            )
-        events = [_normalize_event(event) for event in history]
+    current = _required_mapping(payload, "tracking_status")
+    status = _normalize_status(current.get("status"))
+    latest_update = _optional_string(current.get("status_details")) or status
+    estimated_delivery = _normalize_estimated_delivery(payload.get("eta"))
 
-        current_event = _normalize_event(current)
-        current_identity = (
-            current_event.status,
-            current_event.description,
-            current_event.event_time,
+    history = payload.get("tracking_history")
+    if not isinstance(history, list):
+        raise MalformedProviderResponseError(
+            "Shippo tracking history is invalid"
         )
-        if all(
-            (
-                event.status,
-                event.description,
-                event.event_time,
-            )
-            != current_identity
-            for event in events
-        ):
-            events.append(current_event)
-        events.sort(key=lambda event: event.event_time)
+    events = [_normalize_event(event) for event in history]
 
-        return TrackingResult(
-            tracking_number=normalized_response_number,
-            carrier=carrier,
-            status=status,
-            estimated_delivery=estimated_delivery,
-            latest_update=latest_update,
-            events=tuple(events),
+    current_event = _normalize_event(current)
+    current_identity = (
+        current_event.status,
+        current_event.description,
+        current_event.event_time,
+    )
+    if all(
+        (
+            event.status,
+            event.description,
+            event.event_time,
         )
+        != current_identity
+        for event in events
+    ):
+        events.append(current_event)
+    events.sort(key=lambda event: event.event_time)
+
+    return TrackingResult(
+        tracking_number=normalized_response_number,
+        carrier=carrier,
+        status=status,
+        estimated_delivery=estimated_delivery,
+        latest_update=latest_update,
+        events=tuple(events),
+    )
 
 def _required_mapping(
     payload: Mapping[str, Any],
