@@ -8,15 +8,58 @@ from app.carriers.base import (
 )
 from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
-USPS_DOMESTIC_PATTERN = re.compile(r"^9[2345]\d{18,20}$")
+USPS_DOMESTIC_PATTERN = re.compile(r"^9[1-5]\d{18,20}$")
+USPS_IMPB_26_PATTERN = re.compile(r"^92\d{24}$")
+USPS_GXG_PATTERN = re.compile(r"^82\d{8}$")
 USPS_INTERNATIONAL_PATTERN = re.compile(r"^[A-Z]{2}\d{9}US$")
 USPS_MOCK_TRACKING_NUMBER = "9400111899223856928499"
+USPS_ROUTING_CODE_LENGTHS = (5, 9)
+
+
+def _has_valid_mod_10_check_digit(tracking_number: str) -> bool:
+    """Validate the GS1 Mod-10 check digit used by an IMpb identifier."""
+    data_digits = reversed(tracking_number[:-1])
+    weighted_sum = sum(
+        int(digit) * (3 if position % 2 else 1)
+        for position, digit in enumerate(data_digits, start=1)
+    )
+    expected_check_digit = (10 - weighted_sum % 10) % 10
+    return int(tracking_number[-1]) == expected_check_digit
+
+
+def _is_usps_domestic_tracking_number(tracking_number: str) -> bool:
+    return bool(
+        USPS_DOMESTIC_PATTERN.fullmatch(tracking_number)
+        or (
+            USPS_IMPB_26_PATTERN.fullmatch(tracking_number)
+            and _has_valid_mod_10_check_digit(tracking_number)
+        )
+    )
+
+
+def canonicalize_usps_tracking_number(tracking_number: str) -> str:
+    """Extract a USPS package ID from a validated 420 routing barcode."""
+    if not tracking_number.startswith("420") or not tracking_number.isdigit():
+        return tracking_number
+
+    candidates = tuple(
+        tracking_number[3 + routing_length :]
+        for routing_length in USPS_ROUTING_CODE_LENGTHS
+        if _is_usps_domestic_tracking_number(
+            tracking_number[3 + routing_length :]
+        )
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    return tracking_number
 
 
 def is_usps_tracking_number(tracking_number: str) -> bool:
     """Return whether a normalized number matches a supported USPS format."""
+    tracking_number = canonicalize_usps_tracking_number(tracking_number)
     return bool(
-        USPS_DOMESTIC_PATTERN.fullmatch(tracking_number)
+        _is_usps_domestic_tracking_number(tracking_number)
+        or USPS_GXG_PATTERN.fullmatch(tracking_number)
         or USPS_INTERNATIONAL_PATTERN.fullmatch(tracking_number)
     )
 

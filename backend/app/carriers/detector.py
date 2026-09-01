@@ -10,6 +10,7 @@ from app.carriers.base import (
     UnsupportedTrackingNumberError,
 )
 from app.carriers.registry import CARRIER_ADAPTERS
+from app.carriers.usps import canonicalize_usps_tracking_number
 
 MAX_TRACKING_NUMBER_LENGTH = 100
 
@@ -21,7 +22,7 @@ def normalize_tracking_number(tracking_number: str) -> str:
         raise EmptyTrackingNumberError("Tracking number must not be empty")
     if len(normalized) > MAX_TRACKING_NUMBER_LENGTH:
         raise InvalidTrackingNumberError("Tracking number is too long")
-    return normalized
+    return canonicalize_usps_tracking_number(normalized)
 
 
 def detect_carrier(

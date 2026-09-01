@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from app.carriers.base import (
     CarrierAdapterError,
 )
+from app.carriers.usps import is_usps_tracking_number
 from app.tracking_providers.base import TrackingEventResult, TrackingResult
 
 DHL_TRACKING_PATTERN = re.compile(
@@ -20,7 +21,10 @@ class DHLAdapter:
     name = "DHL"
 
     def supports_tracking_number(self, tracking_number: str) -> bool:
-        return DHL_TRACKING_PATTERN.fullmatch(tracking_number) is not None
+        return bool(
+            DHL_TRACKING_PATTERN.fullmatch(tracking_number)
+            and not is_usps_tracking_number(tracking_number)
+        )
 
     def track(self, tracking_number: str) -> TrackingResult:
         if not self.supports_tracking_number(tracking_number):

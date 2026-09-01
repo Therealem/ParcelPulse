@@ -73,6 +73,15 @@ def test_successful_lookup_normalizes_tracking_number() -> None:
             "Fort Worth, TX",
         ),
         (
+            "92001902673388000110029630",
+            "USPS",
+            "Arriving On Time",
+            "August 29, 2026",
+            "Arrived at USPS Regional Destination Facility",
+            "Arrived at destination facility",
+            "Fort Worth, TX",
+        ),
+        (
             "123456789012",
             "FedEx",
             "At Local Facility",
@@ -200,6 +209,83 @@ def test_carrier_detection(
 ) -> None:
     normalized = normalize_tracking_number(tracking_number)
     assert detect_carrier(normalized).name == expected_carrier
+
+
+@pytest.mark.parametrize(
+    "tracking_number",
+    [
+        "91000000000000000000",
+        "9100000000000000000000",
+        "92001902673388000110029630",
+        "8200000000",
+    ],
+)
+def test_carrier_detection_accepts_documented_usps_formats(
+    tracking_number: str,
+) -> None:
+    normalized = normalize_tracking_number(tracking_number)
+    assert detect_carrier(normalized).name == "USPS"
+
+
+@pytest.mark.parametrize(
+    "tracking_number",
+    [
+        "42076102 9400111899223856928499",
+        "420761021234 9400111899223856928499",
+    ],
+)
+def test_usps_420_routing_barcode_normalizes_to_package_identifier(
+    tracking_number: str,
+) -> None:
+    normalized = normalize_tracking_number(tracking_number)
+
+    assert normalized == "9400111899223856928499"
+    assert detect_carrier(normalized).name == "USPS"
+
+
+def test_usps_gxg_number_does_not_collide_with_dhl() -> None:
+    normalized = normalize_tracking_number("82 000 000 00")
+    assert detect_carrier(normalized).name == "USPS"
+
+
+def test_usps_22_digit_number_does_not_collide_with_fedex() -> None:
+    normalized = normalize_tracking_number("91 00000000000000000000")
+    assert detect_carrier(normalized).name == "USPS"
+
+
+@pytest.mark.parametrize(
+    "tracking_number",
+    [
+        "92001902673388000110029631",
+        "12001902673388000110029630",
+    ],
+)
+def test_carrier_detection_rejects_invalid_26_digit_usps_numbers(
+    tracking_number: str,
+) -> None:
+    normalized = normalize_tracking_number(tracking_number)
+    with pytest.raises(UnsupportedTrackingNumberError):
+        detect_carrier(normalized)
+
+
+@pytest.mark.parametrize(
+    "tracking_number",
+    [
+        "4207610 9400111899223856928499",
+        "EA123456789GB",
+    ],
+)
+def test_carrier_detection_rejects_unvalidated_usps_like_numbers(
+    tracking_number: str,
+) -> None:
+    normalized = normalize_tracking_number(tracking_number)
+    with pytest.raises(UnsupportedTrackingNumberError):
+        detect_carrier(normalized)
+
+
+def test_non_usps_ten_digit_number_remains_dhl() -> None:
+    normalized = normalize_tracking_number("8100000000")
+    assert detect_carrier(normalized).name == "DHL"
 
 
 def test_carrier_detection_rejects_unsupported_number() -> None:

@@ -414,6 +414,29 @@ def test_refresh_through_shippo_is_idempotent(
     assert event_count == 2
 
 
+def test_shippo_lookup_uses_canonical_usps_package_identifier(
+    isolated_database: sessionmaker[Session],
+) -> None:
+    usps_number = "9400111899223856928499"
+    concatenated_barcode = f"42076102{usps_number}"
+    payload = shippo_payload("usps", usps_number)
+    provider, client = shippo_provider_for_payload(payload)
+    try:
+        with isolated_database() as session:
+            user_id = session.scalar(select(User.id))
+            assert user_id is not None
+
+            saved = TrackingService(session, provider).track(
+                concatenated_barcode,
+                user_id,
+            )
+    finally:
+        client.close()
+
+    assert saved.tracking_number == usps_number
+    assert saved.carrier == "USPS"
+
+
 def test_shippo_refresh_replaces_mock_history_and_preserves_other_shipments(
     isolated_database: sessionmaker[Session],
 ) -> None:
