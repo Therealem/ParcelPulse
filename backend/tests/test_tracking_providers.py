@@ -1,6 +1,7 @@
 """Tests for tracking provider selection and Shippo normalization."""
 
 from copy import deepcopy
+import json
 from pathlib import Path
 from typing import Any
 
@@ -89,12 +90,31 @@ def shippo_provider_for_payload(
     """Build a Shippo provider using an in-memory HTTP transport."""
 
     def handler(request: httpx2.Request) -> httpx2.Response:
+        assert request.method == "POST"
+        assert request.url == "https://api.goshippo.com/tracks/"
         assert request.headers["Authorization"] == f"ShippoToken {DUMMY_TOKEN}"
         assert request.headers["SHIPPO-API-VERSION"] == "2018-02-08"
+        assert request.headers["Content-Type"].startswith("application/json")
+        assert json.loads(request.content) == {
+            "carrier": payload["carrier"],
+            "tracking_number": payload["tracking_number"],
+        }
         return httpx2.Response(200, json=payload)
 
     client = httpx2.Client(transport=httpx2.MockTransport(handler))
     return ShippoProvider(SecretStr(DUMMY_TOKEN), client), client
+
+
+def test_shippo_lookup_registers_tracker_with_post() -> None:
+    payload = shippo_payload("ups", UPS_TRACKING_NUMBER)
+    provider, client = shippo_provider_for_payload(payload)
+    try:
+        result = provider.track(UPS_TRACKING_NUMBER, "UPS")
+    finally:
+        client.close()
+
+    assert result.tracking_number == UPS_TRACKING_NUMBER
+    assert result.carrier == "UPS"
 
 
 @pytest.mark.parametrize(

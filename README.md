@@ -258,8 +258,9 @@ available, but new clients should use `POST /api/tracking`.
 
 - `mock` is the default when the variable is absent. It uses the deterministic
   UPS, USPS, FedEx, and DHL adapters and never makes an external request.
-- `shippo` uses Shippo's authenticated tracking endpoint for real provider
-  data while retaining ParcelPulse carrier detection and persistence.
+- `shippo` registers the detected package through Shippo's authenticated
+  `POST /tracks` endpoint and normalizes the returned real provider data while
+  retaining ParcelPulse carrier detection and persistence.
 - `easypost` creates a standalone EasyPost Tracker for real provider data while
   retaining ParcelPulse carrier detection and persistence.
 
@@ -296,7 +297,7 @@ environment files, browser code, logs, screenshots, or commits. API keys must
 remain in `backend/.env`. ParcelPulse sends credentials only from FastAPI to
 the configured provider over HTTPS. See Shippo's official
 [authentication guide](https://docs.goshippo.com/docs/guides_general/authentication/)
-and [tracking endpoint reference](https://docs.goshippo.com/api-reference/tracking-status/get-a-tracking-status).
+and [tracking registration reference](https://docs.goshippo.com/api-reference/tracking-status/register-a-tracking-webhook).
 
 After changing provider configuration, restart FastAPI. To switch safely back
 to deterministic development data:

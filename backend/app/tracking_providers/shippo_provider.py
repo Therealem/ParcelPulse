@@ -3,7 +3,6 @@
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
-from urllib.parse import quote
 
 import httpx2
 from pydantic import SecretStr
@@ -54,7 +53,7 @@ _STATUS_NAMES = {
 
 
 class ShippoProvider:
-    """Fetch and normalize real tracking data from Shippo's HTTP API."""
+    """Register and normalize real tracking data through Shippo's API."""
 
     name = "shippo"
 
@@ -84,18 +83,19 @@ class ShippoProvider:
         carrier_token: str,
         tracking_number: str,
     ) -> httpx2.Response:
-        url = (
-            f"{SHIPPO_API_BASE_URL}/tracks/"
-            f"{quote(carrier_token, safe='')}/"
-            f"{quote(tracking_number, safe='')}"
-        )
+        url = f"{SHIPPO_API_BASE_URL}/tracks/"
         headers = self._request_headers()
+        request_body = {
+            "carrier": carrier_token,
+            "tracking_number": tracking_number,
+        }
 
         try:
             if self._client is not None:
-                response = self._client.get(
+                response = self._client.post(
                     url,
                     headers=headers,
+                    json=request_body,
                     timeout=SHIPPO_TIMEOUT,
                 )
             else:
@@ -103,7 +103,11 @@ class ShippoProvider:
                     timeout=SHIPPO_TIMEOUT,
                     follow_redirects=False,
                 ) as client:
-                    response = client.get(url, headers=headers)
+                    response = client.post(
+                        url,
+                        headers=headers,
+                        json=request_body,
+                    )
         except httpx2.TimeoutException as error:
             raise ProviderTimeoutError("Shippo request timed out") from error
         except httpx2.RequestError as error:
