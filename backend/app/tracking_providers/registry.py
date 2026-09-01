@@ -7,7 +7,6 @@ from app.tracking_providers.base import (
     ProviderConfigurationError,
     TrackingProvider,
 )
-from app.tracking_providers.easypost_provider import EasyPostProvider
 from app.tracking_providers.mock_provider import MockTrackingProvider
 from app.tracking_providers.shippo_provider import ShippoProvider
 
@@ -25,6 +24,11 @@ def create_tracking_provider(
             "SHIPPO_API_TOKEN is required when TRACKING_PROVIDER=shippo",
         )
         return ShippoProvider(api_token)
+
+    # EasyPost remains an optional legacy selection. Import it only when that
+    # provider is explicitly selected so mock and Shippo do not depend on an
+    # optional adapter being installed.
+    from app.tracking_providers.easypost_provider import EasyPostProvider
 
     api_key = _require_provider_secret(
         settings.easypost_api_key,
