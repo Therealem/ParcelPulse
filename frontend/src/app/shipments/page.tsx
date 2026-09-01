@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ShipmentsDashboard } from "@/components/shipments-dashboard";
 import { LogoutButton } from "@/components/logout-button";
+import { NotificationBell } from "@/components/notification-bell";
 
 export const metadata: Metadata = {
   title: "Saved Shipments | ParcelPulse",
@@ -32,7 +33,7 @@ export default async function ShipmentsPage({
             <span className="h-4 w-4 rounded-[4px] border-2 border-white" />
             <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-sky-300" />
           </span>
-          <span className="text-lg font-bold tracking-[-0.025em]">
+          <span className="hidden text-lg font-bold tracking-[-0.025em] sm:inline">
             Parcel<span className="text-blue-600">Pulse</span>
           </span>
         </Link>
@@ -40,10 +41,11 @@ export default async function ShipmentsPage({
         <div className="flex items-center gap-2">
           <Link
             href="/"
-            className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            className="hidden h-10 items-center justify-center rounded-xl border border-slate-200 bg-white/80 px-4 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:border-blue-200 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 sm:inline-flex"
           >
             Track a package
           </Link>
+          <NotificationBell />
           <LogoutButton />
         </div>
       </nav>
