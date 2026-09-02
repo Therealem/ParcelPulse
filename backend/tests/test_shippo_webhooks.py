@@ -1,5 +1,10 @@
 """Tests for safe, idempotent Shippo tracking webhook ingestion."""
 
+import hashlib
+import hmac
+import json
+from pathlib import Path
+import time
 from typing import Any
 
 import pytest
@@ -16,6 +21,7 @@ from app.tracking_providers.mock_provider import MockTrackingProvider
 UPS_TRACKING_NUMBER = "1Z999AA10123456784"
 USPS_TRACKING_NUMBER = "9400111899223856928499"
 WEBHOOK_PATH = "/api/webhooks/shippo"
+HMAC_SECRET = "shippo-hmac-test-secret-not-real"
 
 client = TestClient(app)
 
@@ -24,7 +30,9 @@ client = TestClient(app)
 def unverified_local_webhooks() -> None:
     """Keep webhook verification disabled unless a test enables it."""
     settings = ShippoWebhookSettings(
+        APP_ENV="development",
         SHIPPO_WEBHOOK_SECRET=None,
+        SHIPPO_WEBHOOK_HMAC_SECRET=None,
         _env_file=None,
     )
     app.dependency_overrides[get_shippo_webhook_settings] = lambda: settings
@@ -72,6 +80,69 @@ def shippo_tracker_payload(
 def webhook_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     """Wrap one tracker object in Shippo's documented event envelope."""
     return {"event": "track_updated", "test": False, "data": payload}
+
+
+def enable_hmac_verification(
+    *,
+    secret: str | None = HMAC_SECRET,
+    environment: str = "development",
+    tolerance_seconds: int = 300,
+) -> None:
+    """Require a synthetic HMAC secret for one isolated test."""
+    settings = ShippoWebhookSettings(
+        APP_ENV=environment,
+        SHIPPO_WEBHOOK_HMAC_SECRET=secret,
+        SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=tolerance_seconds,
+        _env_file=None,
+    )
+    app.dependency_overrides[get_shippo_webhook_settings] = lambda: settings
+
+
+def serialize_webhook(envelope: dict[str, Any], *, pretty: bool = False) -> bytes:
+    """Create stable raw JSON bytes for signing and request delivery."""
+    if pretty:
+        return json.dumps(envelope, indent=2).encode("utf-8")
+    return json.dumps(envelope, separators=(",", ":")).encode("utf-8")
+
+
+def shippo_signature(
+    body: bytes,
+    *,
+    timestamp: int | None = None,
+    secret: str = HMAC_SECRET,
+) -> str:
+    """Sign raw bytes using Shippo's documented HMAC format."""
+    signed_at = int(time.time()) if timestamp is None else timestamp
+    signed_payload = str(signed_at).encode("ascii") + b"." + body
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        signed_payload,
+        hashlib.sha256,
+    ).hexdigest()
+    return f"t={signed_at},v1={digest}"
+
+
+def post_signed_webhook(
+    envelope: dict[str, Any],
+    *,
+    body: bytes | None = None,
+    timestamp: int | None = None,
+    secret: str = HMAC_SECRET,
+):
+    """Post one correctly shaped synthetic Shippo HMAC request."""
+    request_body = serialize_webhook(envelope) if body is None else body
+    return client.post(
+        WEBHOOK_PATH,
+        content=request_body,
+        headers={
+            "Content-Type": "application/json",
+            "Shippo-Auth-Signature": shippo_signature(
+                request_body,
+                timestamp=timestamp,
+                secret=secret,
+            ),
+        },
+    )
 
 
 def save_mock_shipment(tracking_number: str = UPS_TRACKING_NUMBER) -> dict:
@@ -331,6 +402,189 @@ def test_optional_relay_secret_rejects_unverified_request() -> None:
     assert rejected.status_code == 401
     assert rejected.json() == {"detail": "Webhook authentication failed"}
     assert accepted.status_code == 200
+
+
+def test_valid_shippo_hmac_signature_updates_shipment() -> None:
+    saved = save_mock_shipment()
+    enable_hmac_verification(environment="production")
+    envelope = webhook_envelope(
+        shippo_tracker_payload(
+            status="DELIVERED",
+            detail="Package delivered at the front door.",
+            status_date="2026-08-31T18:45:00Z",
+        )
+    )
+
+    response = post_signed_webhook(envelope)
+    shipment = client.get(f"/api/shipments/{saved['id']}").json()
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "processed"}
+    assert shipment["status"] == "Delivered"
+
+
+def test_shippo_hmac_uses_exact_raw_body_bytes() -> None:
+    save_mock_shipment()
+    enable_hmac_verification()
+    envelope = webhook_envelope(shippo_tracker_payload())
+    pretty_body = serialize_webhook(envelope, pretty=True)
+
+    response = post_signed_webhook(envelope, body=pretty_body)
+
+    assert response.status_code == 200
+
+
+def test_shippo_hmac_rejects_missing_signature() -> None:
+    save_mock_shipment()
+    enable_hmac_verification()
+    body = serialize_webhook(webhook_envelope(shippo_tracker_payload()))
+
+    response = client.post(
+        WEBHOOK_PATH,
+        content=body,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Webhook authentication failed"}
+
+
+def test_shippo_hmac_rejects_tampered_body() -> None:
+    save_mock_shipment()
+    enable_hmac_verification()
+    original = webhook_envelope(shippo_tracker_payload())
+    tampered = webhook_envelope(
+        shippo_tracker_payload(
+            status="DELIVERED",
+            detail="Forged delivery status.",
+        )
+    )
+    original_body = serialize_webhook(original)
+    tampered_body = serialize_webhook(tampered)
+
+    response = client.post(
+        WEBHOOK_PATH,
+        content=tampered_body,
+        headers={
+            "Content-Type": "application/json",
+            "Shippo-Auth-Signature": shippo_signature(original_body),
+        },
+    )
+
+    assert response.status_code == 401
+    shipments = client.get("/api/shipments").json()
+    assert shipments[0]["status"] == "In Transit"
+
+
+def test_shippo_hmac_rejects_wrong_secret() -> None:
+    save_mock_shipment()
+    enable_hmac_verification()
+    envelope = webhook_envelope(shippo_tracker_payload())
+
+    response = post_signed_webhook(
+        envelope,
+        secret="different-test-secret",
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Webhook authentication failed"}
+
+
+@pytest.mark.parametrize(
+    "signature_header",
+    [
+        "",
+        "t=not-a-timestamp,v1=" + "0" * 64,
+        "t=1788290000",
+        "t=1788290000,v1=not-hex",
+        "t=1788290000,v1=" + "0" * 64 + ",extra=value",
+        "t=1788290000,t=1788290000,v1=" + "0" * 64,
+    ],
+)
+def test_shippo_hmac_rejects_malformed_signature_header(
+    signature_header: str,
+) -> None:
+    enable_hmac_verification()
+    body = serialize_webhook(webhook_envelope(shippo_tracker_payload()))
+
+    response = client.post(
+        WEBHOOK_PATH,
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "Shippo-Auth-Signature": signature_header,
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Webhook authentication failed"}
+
+
+@pytest.mark.parametrize("offset_seconds", [-3600, 3600])
+def test_shippo_hmac_rejects_timestamp_outside_tolerance(
+    offset_seconds: int,
+) -> None:
+    enable_hmac_verification(tolerance_seconds=300)
+    envelope = webhook_envelope(shippo_tracker_payload())
+
+    response = post_signed_webhook(
+        envelope,
+        timestamp=int(time.time()) + offset_seconds,
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Webhook authentication failed"}
+
+
+def test_production_webhook_fails_closed_without_hmac_secret() -> None:
+    enable_hmac_verification(secret=None, environment="production")
+
+    response = client.post(
+        WEBHOOK_PATH,
+        json=webhook_envelope(shippo_tracker_payload()),
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Webhook verification is not configured"
+    }
+
+
+def test_shippo_hmac_failures_do_not_log_or_return_secrets(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = "local-hmac-secret-must-never-appear"
+    enable_hmac_verification(secret=secret)
+    envelope = webhook_envelope(shippo_tracker_payload())
+
+    response = post_signed_webhook(
+        envelope,
+        secret="incorrect-secret",
+    )
+
+    assert response.status_code == 401
+    assert secret not in response.text
+    assert secret not in caplog.text
+    assert "incorrect-secret" not in caplog.text
+
+
+def test_shippo_hmac_settings_load_from_environment_file(
+    tmp_path: Path,
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "APP_ENV=production\n"
+        f"SHIPPO_WEBHOOK_HMAC_SECRET={HMAC_SECRET}\n"
+        "SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=180\n",
+        encoding="utf-8",
+    )
+
+    settings = ShippoWebhookSettings(_env_file=env_file)
+
+    assert settings.app_environment == "production"
+    assert settings.hmac_secret is not None
+    assert settings.hmac_secret.get_secret_value() == HMAC_SECRET
+    assert settings.hmac_tolerance_seconds == 180
 
 
 def test_non_tracking_webhook_is_safely_ignored() -> None:

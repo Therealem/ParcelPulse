@@ -150,12 +150,34 @@ class TrackingProviderSettings(EnvironmentSettings):
 class ShippoWebhookSettings(EnvironmentSettings):
     """Optional verification settings for inbound Shippo webhooks."""
 
+    app_environment: Literal["development", "test", "production"] = Field(
+        default="development",
+        validation_alias="APP_ENV",
+    )
     webhook_secret: SecretStr | None = Field(
         default=None,
         validation_alias="SHIPPO_WEBHOOK_SECRET",
     )
+    hmac_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias="SHIPPO_WEBHOOK_HMAC_SECRET",
+    )
+    hmac_tolerance_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=3600,
+        validation_alias="SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS",
+    )
 
-    @field_validator("webhook_secret", mode="before")
+    @field_validator("app_environment", mode="before")
+    @classmethod
+    def normalize_app_environment(cls, value: object) -> object:
+        """Normalize environment names while retaining strict choices."""
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+    @field_validator("webhook_secret", "hmac_secret", mode="before")
     @classmethod
     def normalize_webhook_secret(cls, value: object) -> object:
         """Treat blanks and documentation placeholders as unconfigured."""

@@ -85,6 +85,8 @@ APP_ENV=development
 ENABLE_DEV_NOTIFICATION_ENDPOINT=false
 SHIPPO_API_TOKEN=replace_with_shippo_api_token
 SHIPPO_WEBHOOK_SECRET=replace_with_shippo_webhook_secret
+SHIPPO_WEBHOOK_HMAC_SECRET=replace_with_shippo_hmac_secret
+SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=300
 EASYPOST_API_KEY=replace_with_easypost_api_key
 TRACKING_PROVIDER=mock
 ```
@@ -310,7 +312,7 @@ TRACKING_PROVIDER=mock
 Provider failures are returned as stable API errors; raw provider response
 details and credentials are never sent to the frontend.
 
-### Shippo webhooks (development)
+### Shippo webhooks
 
 ParcelPulse accepts Shippo `track_updated` notifications at:
 
@@ -318,18 +320,41 @@ ParcelPulse accepts Shippo `track_updated` notifications at:
 POST /api/webhooks/shippo
 ```
 
-Configure that route as a public HTTPS URL in Shippo, for example
-`https://your-development-host.example/api/webhooks/shippo`. A valid tracker
-notification updates every user-owned saved copy with the same normalized
-tracking number and carrier. It never creates shipments, changes ownership,
-or touches legacy rows without an owner. The event timeline is reconciled to
-Shippo's complete current history, so repeat deliveries are idempotent and old
-mock events are removed.
+Keep this route local until a public HTTPS deployment is intentionally
+configured. A valid tracker notification updates every user-owned saved copy
+with the same normalized tracking number and carrier. It never creates
+shipments, changes ownership, or touches legacy rows without an owner. The
+event timeline is reconciled to Shippo's complete current history, so repeat
+deliveries are idempotent and old mock events are removed.
 
-Shippo's current public webhook reference documents the event envelope and
-callback URL, but does not document an inbound signature or custom request
-header. For a deployment behind a trusted webhook relay or reverse proxy,
-configure an independent secret in `backend/.env`:
+Shippo HMAC deliveries use this header format:
+
+```text
+Shippo-Auth-Signature: t=<unix_timestamp>,v1=<hmac_sha256_hex_digest>
+```
+
+ParcelPulse verifies the signature against the exact raw body using
+`<timestamp>.<body>`, compares the digest in constant time, and rejects
+timestamps outside the configured tolerance. Configure the inbound HMAC
+secret received from Shippo only in `backend/.env`:
+
+```env
+SHIPPO_WEBHOOK_HMAC_SECRET=your_shippo_provided_hmac_secret
+SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=300
+```
+
+Shippo requires account-side HMAC setup. Contact your Shippo account manager
+or Shippo Sales with the subject `HMAC Webhook Setup for ParcelPulse`, then
+complete the token exchange with Shippo's solutions team. The webhook HMAC
+secret is separate from `SHIPPO_API_TOKEN` and must never be placed in a
+frontend file, URL, log, screenshot, or commit.
+
+When `APP_ENV=production`, ParcelPulse rejects webhook processing unless the
+HMAC secret is configured. Development remains unsigned by default so local
+mock tests continue to work. The placeholder in `.env.example` is treated as
+unconfigured.
+
+For an additional trusted relay or reverse-proxy credential, configure:
 
 ```env
 SHIPPO_WEBHOOK_SECRET=generate_a_unique_random_value
@@ -337,13 +362,11 @@ SHIPPO_WEBHOOK_SECRET=generate_a_unique_random_value
 
 The relay must add that value in the
 `X-ParcelPulse-Webhook-Secret` request header. ParcelPulse compares it in
-constant time and rejects missing or incorrect values. Leave the variable
-unset for direct local Shippo delivery; use HTTPS and protect the public route
-at the network edge. Do not place the secret in a URL, frontend file, log, or
-commit. The documented placeholder in `.env.example` is treated as
-unconfigured.
+constant time and rejects missing or incorrect values. If both relay and HMAC
+secrets are configured, both checks must pass.
 
 See Shippo's official
+[webhook security guide](https://docs.goshippo.com/tracking/webhook-security),
 [webhook creation reference](https://docs.goshippo.com/api-reference/webhooks/create-a-new-webhook)
 and
 [tracking webhook reference](https://docs.goshippo.com/api-reference/tracking-status/register-a-tracking-webhook).
