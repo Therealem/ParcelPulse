@@ -483,11 +483,13 @@ python -m pytest
 
 ## Environment variables
 
-The frontend reads `NEXT_PUBLIC_API_URL` from `frontend/.env.local`. For local
-cookie authentication, use `http://localhost:8000` so it is same-site with the
-frontend at `http://localhost:3000`. Start from the committed root
-`.env.example`. `NEXT_PUBLIC_` values are visible in browser code, so they must
-never contain secrets.
+The frontend reads the server-only `BACKEND_API_URL` from
+`frontend/.env.local`. It defaults to `http://127.0.0.1:8000` for local
+development. Browser requests use relative `/api/...` URLs, and Next.js proxies
+them to FastAPI, so authentication cookies remain first-party on the frontend
+origin. In staging or production, set `BACKEND_API_URL` to the externally
+reachable FastAPI base URL without an `/api` suffix. Never store secrets in a
+`NEXT_PUBLIC_` variable because those values are included in browser code.
 
 ## Manual tracking test
 

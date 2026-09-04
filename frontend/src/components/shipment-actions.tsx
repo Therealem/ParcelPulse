@@ -10,8 +10,6 @@ type Feedback = {
   message: string;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
 async function getApiError(
   response: Response,
   fallback: string,
@@ -47,20 +45,12 @@ export function ShipmentActions({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   async function refreshShipment() {
-    if (!apiBaseUrl) {
-      setFeedback({
-        status: "error",
-        message: "The tracking service is not configured.",
-      });
-      return;
-    }
-
     setActiveAction("refresh");
     setFeedback(null);
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}/refresh`,
+        `/api/shipments/${shipmentId}/refresh`,
         {
           method: "POST",
           credentials: "include",
@@ -109,20 +99,12 @@ export function ShipmentActions({
       return;
     }
 
-    if (!apiBaseUrl) {
-      setFeedback({
-        status: "error",
-        message: "The shipment service is not configured.",
-      });
-      return;
-    }
-
     setActiveAction("delete");
     setFeedback(null);
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}`,
+        `/api/shipments/${shipmentId}`,
         { method: "DELETE", credentials: "include" },
       );
 

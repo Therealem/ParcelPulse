@@ -17,8 +17,6 @@ type ApiError = {
   detail?: string | Array<{ msg?: string }>;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
 async function getApiError(response: Response): Promise<string> {
   const fallback = "We could not look up that package. Please try again.";
 
@@ -57,25 +55,16 @@ export function TrackingLookup() {
       return;
     }
 
-    if (!apiBaseUrl) {
-      setShipment(null);
-      setError("The tracking service is not configured.");
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/tracking`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ tracking_number: trackingNumber }),
-        },
-      );
+      const response = await fetch("/api/tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tracking_number: trackingNumber }),
+      });
 
       if (response.status === 401) {
         throw new Error("Sign in to track and save this package.");

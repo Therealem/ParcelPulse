@@ -28,23 +28,15 @@ type RefreshFeedback = {
 
 type SortOption = "newest" | "oldest" | "estimated-delivery";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
 const emptyShipments: Shipment[] = [];
 
 async function requestShipments(signal?: AbortSignal): Promise<Shipment[]> {
-  if (!apiBaseUrl) {
-    throw new Error("The shipment service is not configured.");
-  }
-
-  const response = await fetch(
-    `${apiBaseUrl.replace(/\/$/, "")}/api/shipments`,
-    {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-      cache: "no-store",
-      signal,
-    },
-  );
+  const response = await fetch("/api/shipments", {
+    headers: { Accept: "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    signal,
+  });
 
   if (response.status === 401) {
     throw new Error("AUTH_REQUIRED");
@@ -221,21 +213,12 @@ export function ShipmentsDashboard({
   }
 
   async function refreshShipment(shipment: Shipment) {
-    if (!apiBaseUrl) {
-      setRefreshFeedback({
-        shipmentId: shipment.id,
-        status: "error",
-        message: "The tracking service is not configured.",
-      });
-      return;
-    }
-
     setRefreshingId(shipment.id);
     setRefreshFeedback(null);
 
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipment.id}/refresh`,
+        `/api/shipments/${shipment.id}/refresh`,
         {
           method: "POST",
           credentials: "include",

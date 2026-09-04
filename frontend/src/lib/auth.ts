@@ -11,7 +11,9 @@ export type AuthenticatedUser = {
   updated_at: string;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiBaseUrl = (
+  process.env.BACKEND_API_URL ?? "http://127.0.0.1:8000"
+).replace(/\/$/, "");
 
 export async function getRequestCookieHeader(): Promise<string> {
   return (await cookies()).toString();
@@ -19,20 +21,13 @@ export async function getRequestCookieHeader(): Promise<string> {
 
 export const getCurrentUser = cache(
   async (): Promise<AuthenticatedUser | null> => {
-    if (!apiBaseUrl) {
-      throw new Error("The authentication service is not configured.");
-    }
-
-    const response = await fetch(
-      `${apiBaseUrl.replace(/\/$/, "")}/api/auth/me`,
-      {
-        headers: {
-          Accept: "application/json",
-          Cookie: await getRequestCookieHeader(),
-        },
-        cache: "no-store",
+    const response = await fetch(`${apiBaseUrl}/api/auth/me`, {
+      headers: {
+        Accept: "application/json",
+        Cookie: await getRequestCookieHeader(),
       },
-    );
+      cache: "no-store",
+    });
 
     if (response.status === 401) {
       return null;

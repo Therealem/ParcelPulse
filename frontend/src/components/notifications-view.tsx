@@ -19,8 +19,6 @@ type ViewState =
   | { status: "success"; notifications: Notification[] }
   | { status: "error"; message: string };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
 function formatTimestamp(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -45,24 +43,13 @@ export function NotificationsView() {
     const controller = new AbortController();
 
     async function loadNotifications() {
-      if (!apiBaseUrl) {
-        setView({
-          status: "error",
-          message: "The notification service is not configured.",
-        });
-        return;
-      }
-
       try {
-        const response = await fetch(
-          `${apiBaseUrl.replace(/\/$/, "")}/api/notifications`,
-          {
-            headers: { Accept: "application/json" },
-            credentials: "include",
-            cache: "no-store",
-            signal: controller.signal,
-          },
-        );
+        const response = await fetch("/api/notifications", {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (response.status === 401) {
           router.replace("/login?next=%2Fnotifications");
           return;
@@ -81,7 +68,7 @@ export function NotificationsView() {
 
         try {
           const devStatusResponse = await fetch(
-            `${apiBaseUrl.replace(/\/$/, "")}/api/notifications/dev/status`,
+            "/api/notifications/dev/status",
             {
               headers: { Accept: "application/json" },
               credentials: "include",
@@ -119,14 +106,11 @@ export function NotificationsView() {
   }, [requestKey, router]);
 
   async function markOneRead(notificationId: number) {
-    if (!apiBaseUrl) {
-      return;
-    }
     setActiveId(notificationId);
     setActionError(null);
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/notifications/${notificationId}/read`,
+        `/api/notifications/${notificationId}/read`,
         { method: "PATCH", credentials: "include" },
       );
       if (response.status === 401) {
@@ -156,14 +140,11 @@ export function NotificationsView() {
   }
 
   async function markAllRead() {
-    if (!apiBaseUrl) {
-      return;
-    }
     setActiveId("all");
     setActionError(null);
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/notifications/read-all`,
+        "/api/notifications/read-all",
         { method: "PATCH", credentials: "include" },
       );
       if (response.status === 401) {
@@ -193,14 +174,11 @@ export function NotificationsView() {
   }
 
   async function createTestNotification() {
-    if (!apiBaseUrl) {
-      return;
-    }
     setActiveId("test");
     setActionError(null);
     try {
       const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/notifications/dev/test`,
+        "/api/notifications/dev/test",
         { method: "POST", credentials: "include" },
       );
       if (response.status === 401) {

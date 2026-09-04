@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
 const notificationsChangedEvent = "parcelpulse:notifications-changed";
 
 export function notifyUnreadCountChanged() {
@@ -14,22 +13,15 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!apiBaseUrl) {
-      return;
-    }
-
     let active = true;
 
     async function loadUnreadCount() {
       try {
-        const response = await fetch(
-          `${apiBaseUrl?.replace(/\/$/, "")}/api/notifications/unread-count`,
-          {
-            headers: { Accept: "application/json" },
-            credentials: "include",
-            cache: "no-store",
-          },
-        );
+        const response = await fetch("/api/notifications/unread-count", {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
         if (!response.ok) {
           return;
         }

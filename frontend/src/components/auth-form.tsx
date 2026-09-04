@@ -10,8 +10,6 @@ type ApiError = {
   detail?: string | Array<{ msg?: string }>;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
 async function getApiError(response: Response): Promise<string> {
   const fallback = "We could not complete that request. Please try again.";
 
@@ -45,11 +43,6 @@ export function AuthForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!apiBaseUrl) {
-      setError("The authentication service is not configured.");
-      return;
-    }
-
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") ?? "");
     const password = String(form.get("password") ?? "");
@@ -58,15 +51,12 @@ export function AuthForm({
     setError(null);
 
     try {
-      const response = await fetch(
-        `${apiBaseUrl.replace(/\/$/, "")}/api/auth/${mode}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, password }),
-        },
-      );
+      const response = await fetch(`/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
 
       if (!response.ok) {
         throw new Error(await getApiError(response));

@@ -25,16 +25,14 @@ export type ShipmentDetail = {
   tracking_events: TrackingEvent[];
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiBaseUrl = (
+  process.env.BACKEND_API_URL ?? "http://127.0.0.1:8000"
+).replace(/\/$/, "");
 
 export const getShipmentDetail = cache(
   async (shipmentId: number): Promise<ShipmentDetail | null> => {
-    if (!apiBaseUrl) {
-      throw new Error("The shipment service is not configured.");
-    }
-
     const response = await fetch(
-      `${apiBaseUrl.replace(/\/$/, "")}/api/shipments/${shipmentId}`,
+      `${apiBaseUrl}/api/shipments/${shipmentId}`,
       {
         headers: {
           Accept: "application/json",

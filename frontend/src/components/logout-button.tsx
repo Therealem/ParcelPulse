@@ -3,20 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
 export function LogoutButton() {
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   async function logout() {
-    if (!apiBaseUrl) {
-      return;
-    }
-
     setIsLoggingOut(true);
     try {
-      await fetch(`${apiBaseUrl.replace(/\/$/, "")}/api/auth/logout`, {
+      await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
       });
