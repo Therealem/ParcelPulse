@@ -15,6 +15,38 @@ than a carrier-specific demo. Its backend separates carrier detection,
 provider communication, persistence, webhook processing, and notifications so
 new integrations can be added without rewriting the API or frontend.
 
+## Product preview
+
+### Landing page
+
+![ParcelPulse landing page with its multi-carrier tracking form](docs/screenshots/01-landing-page.png)
+
+The responsive landing page introduces ParcelPulse and provides a focused
+entry point for tracking packages across supported carriers.
+
+### Shipment dashboard
+
+![Authenticated ParcelPulse saved-shipment dashboard](docs/screenshots/02-shipment-dashboard.png)
+
+The private dashboard brings saved shipments into one responsive view with
+tracking-number search, carrier and status filters, sorting, and refresh
+controls.
+
+### Real tracking timeline
+
+![ParcelPulse shipment detail page with a real tracking timeline](docs/screenshots/03-tracking-timeline.png)
+
+The shipment detail experience presents Shippo-backed status information,
+delivery estimates when available, location updates, and a latest-first
+tracking-event timeline.
+
+### Authentication
+
+![ParcelPulse sign-in page](docs/screenshots/04-authentication.png)
+
+The sign-in page provides access to each user's private shipment dashboard
+through the application's secure cookie-based authentication flow.
+
 ## Engineering highlights
 
 ### Provider-independent tracking pipeline
