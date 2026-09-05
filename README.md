@@ -1,34 +1,175 @@
 # ParcelPulse
 
-ParcelPulse is a production-deployed package tracking platform that lets users
-track and manage shipments from one private dashboard. It combines real Shippo
-tracking data with persistent shipment history, carrier events, webhook-ready
-automatic updates, and in-app delivery notifications.
+**A production-deployed package tracking platform for managing shipments from
+multiple carriers in one private dashboard.**
 
-The production frontend runs on Vercel. FastAPI and PostgreSQL run on Railway,
-with browser API requests routed through the Next.js origin so authentication
-does not depend on third-party cookies.
+[Open the live ParcelPulse application](https://parcel-pulse-six.vercel.app)
 
-## Current features
+ParcelPulse combines a responsive Next.js interface with a FastAPI service,
+PostgreSQL persistence, and real tracking data from Shippo. Users can register,
+track packages, review carrier history, organize saved shipments, and receive
+in-app alerts when meaningful delivery changes occur.
+
+The project is designed as a production-style portfolio application rather
+than a carrier-specific demo. Its backend separates carrier detection,
+provider communication, persistence, webhook processing, and notifications so
+new integrations can be added without rewriting the API or frontend.
+
+## Engineering highlights
+
+### Provider-independent tracking pipeline
+
+`TrackingService` coordinates input normalization, strict carrier detection,
+provider calls, ownership-aware persistence, timeline reconciliation, and
+notifications. Both the deterministic mock provider and the real Shippo
+provider implement a shared `TrackingProvider` protocol and return the same
+normalized `TrackingResult` model.
+
+### Idempotent shipment and event updates
+
+Tracking the same number twice does not create duplicate shipment rows for the
+same user. Refreshes and webhooks reconcile PostgreSQL with the provider's
+canonical timeline, removing stale mock history and inserting only genuinely
+new events. Database constraints reinforce application-level deduplication.
+
+### Ownership enforced at every boundary
+
+Shipment and notification queries always include the authenticated user's ID.
+Users may save the same tracking number independently, but cannot list, open,
+refresh, delete, or modify another user's records by changing a URL.
+
+### Production-safe webhook processing
+
+The Shippo webhook endpoint validates HMAC signatures against the exact raw
+request body, enforces timestamp tolerance for replay protection, compares
+credentials in constant time, limits payload size, and returns sanitized
+errors. Duplicate deliveries remain persistence no-ops.
+
+### First-party production authentication
+
+Browser requests use relative `/api/...` URLs. Next.js proxies them to FastAPI
+through a server-only backend URL, keeping the signed HttpOnly session cookie
+first-party on the Vercel origin instead of relying on third-party cookies
+between Vercel and Railway.
+
+### Migration-controlled persistence
+
+SQLAlchemy models define application relationships and invariants, while
+Alembic owns production schema changes. FastAPI does not blindly create tables
+at startup, and the migration history preserves legacy shipment data while
+adding users, ownership, and notifications.
+
+## Features
+
+### Accounts and privacy
 
 - User registration, login, logout, and authenticated session recovery
-- Secure HttpOnly cookie authentication without browser local-storage tokens
-- Private, per-user shipment dashboards
-- Shipment ownership and isolation across every read, refresh, and delete path
-- Real package tracking through the Shippo Tracking API
-- Carrier detection for UPS, USPS, FedEx, and DHL tracking-number formats
-- A provider abstraction designed to support additional Shippo carriers as
-  carrier detection is expanded
-- Persistent shipment status, estimated delivery, latest update, and location
-  history
-- Shipment detail pages with newest-first tracking timelines
-- Idempotent refreshes that reconcile the provider's canonical event history
-- Shipment deletion with related tracking-event cleanup
-- Tracking-number search, carrier/status filters, and shipment sorting
-- Shippo webhooks for automatic tracking updates
-- Owner-scoped in-app notifications for meaningful delivery transitions
-- A production same-origin frontend/backend integration through `/api`
-- Deterministic mock tracking for safe local development and automated tests
+- Argon2 password hashing and signed HttpOnly cookie sessions
+- Private shipment dashboards and notification feeds
+- Per-user shipment ownership and API isolation
+
+### Package tracking
+
+- Real tracking through the Shippo Tracking API
+- Deterministic mock mode for development and automated testing
+- Strict tracking-number normalization and carrier detection
+- Current automatic detection for UPS, USPS, FedEx, and DHL formats
+- Provider-normalized status, estimated delivery, latest update, location, and
+  event history
+- Clear validation and sanitized provider-error responses
+
+The provider architecture can support additional Shippo carriers once strict,
+unambiguous carrier-detection rules are added for their tracking formats.
+
+### Shipment management
+
+- Persistent saved shipments in PostgreSQL
+- Responsive shipment dashboard and individual detail pages
+- Newest-first vertical tracking timeline
+- Tracking-number search
+- Carrier and status filters
+- Sorting by newest, oldest, and estimated delivery
+- Manual refresh through the same centralized tracking pipeline
+- Confirmed shipment deletion with tracking-event cascade cleanup
+
+### Automatic updates and notifications
+
+- Shippo `track_updated` webhook ingestion
+- Canonical provider-history reconciliation without stale mock events
+- Idempotent webhook and manual-refresh processing
+- In-app notifications for meaningful transitions such as out for delivery,
+  delivered, delayed, delivery exception, and returned shipments
+- Unread notification count, mark-one-read, and mark-all-read actions
+- Deduplication across repeated webhooks, refreshes, and provider events
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser[Browser]
+    Next[Next.js on Vercel]
+    API[FastAPI on Railway]
+    Auth[Auth and ownership]
+    Track[TrackingService]
+    Detect[Carrier detector]
+    Providers[Provider registry]
+    Mock[Mock provider]
+    Shippo[Shippo Tracking API]
+    Verify[Webhook verification]
+    Reconcile[Event reconciliation]
+    Notify[Notification service]
+    DB[(PostgreSQL on Railway)]
+
+    Browser -->|HTTPS pages and relative /api requests| Next
+    Next -->|Server-side /api rewrite| API
+    API --> Auth
+    API --> Track
+    Track --> Detect
+    Track --> Providers
+    Providers --> Mock
+    Providers --> Shippo
+    Track --> Reconcile
+    Shippo -->|Signed track_updated webhook| Verify
+    Verify --> Reconcile
+    Reconcile --> Notify
+    Auth --> DB
+    Reconcile --> DB
+    Notify --> DB
+```
+
+### Tracking lookup flow
+
+1. An authenticated browser submits a tracking number to the relative
+   `/api/tracking` endpoint.
+2. Next.js proxies the request to FastAPI while the browser retains a
+   first-party session cookie.
+3. FastAPI normalizes the number and requires exactly one matching carrier
+   adapter.
+4. The selected tracking provider returns a normalized shipment and event
+   history. Shippo mode registers the tracker through Shippo's `/tracks`
+   endpoint.
+5. `TrackingService` creates or updates the current user's shipment and
+   reconciles its saved events with the canonical provider result.
+6. FastAPI returns the shipment detail response, and the frontend navigates to
+   its tracking timeline.
+
+### Webhook update flow
+
+1. Shippo sends a `track_updated` payload to the public FastAPI webhook route.
+2. FastAPI verifies the HMAC signature, timestamp, payload size, and schema
+   before any database operation.
+3. The Shippo payload is normalized through the same provider mapping used by
+   direct tracking responses.
+4. ParcelPulse updates matching user-owned shipments without changing
+   ownership or creating new shipments.
+5. The canonical timeline replaces stale data, and meaningful status
+   transitions create deduplicated owner notifications.
+6. Unknown tracking numbers are safely ignored without exposing shipment or
+   user information.
+
+Production webhook delivery requires the webhook and HMAC credentials to be
+configured for the Shippo account. The implementation fails closed in
+production when HMAC verification is unavailable.
 
 ## Technology stack
 
@@ -38,53 +179,88 @@ does not depend on third-party cookies.
 | Backend | Python, FastAPI, Uvicorn |
 | Database | PostgreSQL, SQLAlchemy 2.x, psycopg |
 | Migrations | Alembic |
-| Tracking | Shippo Tracking API with a mock-provider fallback |
-| Authentication | Signed HttpOnly cookies, JWT session tokens, Argon2 password hashing |
+| Tracking | Shippo Tracking API and a deterministic mock provider |
+| Authentication | JWT session tokens, signed HttpOnly cookies, Argon2 hashing |
 | Frontend hosting | Vercel |
 | Backend and database hosting | Railway |
-| Testing and quality | pytest, ESLint, TypeScript, Next.js production builds |
+| Quality | pytest, ESLint, TypeScript, Next.js production builds |
 
-## Architecture
+## Data model and integrity guarantees
 
 ```mermaid
-flowchart LR
-    U[Browser] -->|HTTPS pages and relative /api requests| V[Next.js on Vercel]
-    V -->|Server-side rewrite| A[FastAPI on Railway]
-    A -->|SQLAlchemy and psycopg| D[(PostgreSQL on Railway)]
-    A -->|Register and read trackers| S[Shippo Tracking API]
-    S -->|Signed tracking webhooks| A
-    A -->|Shipment transitions| N[In-app notifications]
+erDiagram
+    USER ||--o{ SHIPMENT : owns
+    USER ||--o{ NOTIFICATION : receives
+    SHIPMENT ||--o{ TRACKING_EVENT : contains
+    SHIPMENT o|--o{ NOTIFICATION : references
+
+    USER {
+        int id PK
+        string email UK
+        string password_hash
+        datetime created_at
+        datetime updated_at
+    }
+    SHIPMENT {
+        int id PK
+        int user_id FK
+        string tracking_number
+        string carrier
+        string status
+        datetime created_at
+        datetime updated_at
+    }
+    TRACKING_EVENT {
+        int id PK
+        int shipment_id FK
+        string status
+        string description
+        string location
+        datetime event_time
+    }
+    NOTIFICATION {
+        int id PK
+        int user_id FK
+        int shipment_id FK
+        string type
+        boolean is_read
+        string deduplication_key
+        datetime created_at
+    }
 ```
 
-The frontend never needs the Railway API origin in browser code. Client-side
-requests use relative `/api/...` URLs, and `frontend/next.config.ts` proxies
-those requests to the server-only `BACKEND_API_URL`. Server-rendered frontend
-code contacts FastAPI directly and forwards the incoming session cookie.
+Important invariants include:
 
-FastAPI owns authentication, authorization, carrier detection, provider
-normalization, idempotent shipment/event reconciliation, notifications, and
-webhook validation. PostgreSQL stores users, shipments, tracking events, and
-notifications. Alembic is the only production schema-management mechanism.
+- Email addresses are normalized and unique.
+- A tracking number is unique per user, not globally, so separate users may
+  track the same package independently.
+- Tracking-event identity is unique per shipment, status, description, and
+  event timestamp.
+- Notification deduplication keys are unique per user.
+- Deleting a shipment cascades to its tracking events; associated notification
+  records may remain with their optional shipment reference cleared.
+- Ownership-scoped queries exclude preserved legacy shipments without an
+  assigned user.
 
 ## Repository structure
 
 ```text
 ParcelPulse/
 |-- frontend/
-|   |-- src/app/              # Next.js App Router pages
-|   |-- src/components/       # Tracking, dashboard, auth, and notification UI
-|   |-- src/lib/              # Server-only auth and shipment helpers
-|   `-- next.config.ts        # Same-origin /api rewrite
+|   |-- src/app/                 # Next.js App Router pages
+|   |-- src/components/          # Tracking, dashboard, auth, and notification UI
+|   |-- src/lib/                 # Server-only auth and shipment helpers
+|   `-- next.config.ts           # Same-origin /api rewrite
 |-- backend/
-|   |-- alembic/              # Versioned PostgreSQL migrations
+|   |-- alembic/                 # Versioned PostgreSQL migrations
 |   |-- app/
-|   |   |-- api/              # FastAPI routes
-|   |   |-- carriers/         # Carrier adapters and number detection
-|   |   |-- database/         # SQLAlchemy engine and sessions
-|   |   |-- models/           # User, shipment, event, and notification models
-|   |   |-- schemas/          # API request and response models
-|   |   |-- services/         # Tracking, webhook, auth, and notification logic
-|   |   `-- tracking_providers/ # Mock and Shippo provider implementations
+|   |   |-- api/                 # FastAPI routes
+|   |   |-- carriers/            # Carrier adapters and detection
+|   |   |-- database/            # SQLAlchemy engine and sessions
+|   |   |-- models/              # Persistent domain models
+|   |   |-- schemas/             # Request and response validation
+|   |   |-- services/            # Application and persistence services
+|   |   `-- tracking_providers/  # Provider protocol, mock, and Shippo
 |   |-- tests/
 |   `-- requirements.txt
 |-- .env.example
@@ -94,44 +270,81 @@ ParcelPulse/
 
 ## API overview
 
-Public system endpoints:
-
-```text
-GET  /health
-GET  /health/db
-POST /api/webhooks/shippo
-```
-
-Authentication endpoints:
-
-```text
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/logout
-GET  /api/auth/me
-```
-
-Authenticated shipment endpoints:
-
-```text
-POST   /api/tracking
-GET    /api/shipments
-GET    /api/shipments/{id}
-POST   /api/shipments/{id}/refresh
-DELETE /api/shipments/{id}
-```
-
-Authenticated notification endpoints:
-
-```text
-GET   /api/notifications
-GET   /api/notifications/unread-count
-PATCH /api/notifications/{id}/read
-PATCH /api/notifications/read-all
-```
+| Method | Route | Access | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/health` | Public | Application health |
+| `GET` | `/health/db` | Public | PostgreSQL connectivity |
+| `POST` | `/api/auth/register` | Public | Create an account and session |
+| `POST` | `/api/auth/login` | Public | Authenticate and start a session |
+| `POST` | `/api/auth/logout` | Public | Clear the session cookie |
+| `GET` | `/api/auth/me` | Authenticated | Return the current user |
+| `POST` | `/api/tracking` | Authenticated | Track and save or update a package |
+| `GET` | `/api/shipments` | Authenticated | List the current user's shipments |
+| `GET` | `/api/shipments/{id}` | Authenticated | Return an owned shipment and events |
+| `POST` | `/api/shipments/{id}/refresh` | Authenticated | Refresh through the tracking pipeline |
+| `DELETE` | `/api/shipments/{id}` | Authenticated | Delete an owned shipment |
+| `GET` | `/api/notifications` | Authenticated | List owner-scoped notifications |
+| `GET` | `/api/notifications/unread-count` | Authenticated | Return the unread count |
+| `PATCH` | `/api/notifications/{id}/read` | Authenticated | Mark one owned notification read |
+| `PATCH` | `/api/notifications/read-all` | Authenticated | Mark all owned notifications read |
+| `POST` | `/api/webhooks/shippo` | Public; HMAC required in production | Process a Shippo tracking update |
 
 `POST /api/tracking/lookup` remains as a deprecated compatibility route. New
 clients use `POST /api/tracking`.
+
+## Production deployment
+
+### Vercel frontend
+
+Vercel builds the `frontend` directory as a Next.js application. Its server
+environment supplies the backend destination, while browser bundles contain
+only relative API paths. The `/api/:path*` rewrite proxies browser traffic to
+Railway and preserves first-party authentication on the frontend origin.
+
+### Railway backend and PostgreSQL
+
+Railway runs FastAPI as an HTTPS web service and hosts PostgreSQL. FastAPI
+receives database, authentication, cookie, origin, Shippo, and webhook settings
+through Railway's protected environment configuration. Database connections
+should use private networking where available.
+
+Alembic migrations are applied deliberately before backend releases that
+depend on them. Application startup does not recreate or reset the production
+schema.
+
+### Shippo integration
+
+FastAPI communicates with Shippo over HTTPS using backend-only credentials.
+Provider status, estimates, carrier names, events, timestamps, and locations
+are mapped into ParcelPulse's normalized models before they reach persistence
+or frontend code.
+
+Automatic production updates require a registered Shippo webhook pointed at
+the Railway API and account-side HMAC configuration. Manual refresh remains
+available independently.
+
+## Security model
+
+- Passwords are hashed with Argon2 and never stored in plaintext.
+- Authentication tokens are signed and transported in HttpOnly cookies, not
+  browser local storage.
+- The Vercel same-origin API proxy avoids third-party authentication cookies.
+- Production deployments should enable HTTPS-compatible cookie security
+  attributes through the validated authentication settings.
+- FastAPI CORS is limited to the configured frontend origin and permits
+  credentialed requests.
+- Shipment and notification operations are scoped to the authenticated user.
+- Cross-user record attempts return not-found responses without disclosing
+  ownership.
+- Database credentials, authentication secrets, Shippo tokens, and webhook
+  secrets remain in protected backend or platform environment settings.
+- Webhook signatures are verified before parsing or database processing.
+- Webhook timestamps are checked for replay protection, and comparisons use
+  constant-time functions.
+- Production webhook processing fails closed without HMAC configuration.
+- Provider errors and application logs are sanitized before reaching users.
+- The development notification endpoint requires both development mode and an
+  explicit opt-in flag and remains hidden from the production API schema.
 
 ## Local development
 
@@ -142,9 +355,9 @@ clients use `POST /api/tracking`.
 - Python 3.11 or newer
 - PostgreSQL
 
-ParcelPulse uses npm for all frontend package management.
+ParcelPulse uses npm exclusively for frontend package management.
 
-### 1. Install frontend dependencies
+### Install the frontend
 
 From the repository root:
 
@@ -155,7 +368,7 @@ npm ci
 
 On Windows, use `npm.cmd` if PowerShell blocks the `npm.ps1` shim.
 
-### 2. Create the Python environment
+### Install the backend
 
 macOS or Linux:
 
@@ -174,26 +387,25 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 ```
 
-### 3. Configure local environments
+### Configure local environments
 
-Create `backend/.env` for backend settings and `frontend/.env.local` for the
-server-only frontend API destination. Both files are ignored by Git. Use
-`.env.example` as the name/reference checklist, but supply values privately for
-your own environment.
+Create `backend/.env` for backend configuration and `frontend/.env.local` for
+the server-only frontend API destination. Both are ignored by Git. Use
+`.env.example` as a name/reference checklist and supply values privately for
+your environment.
 
-Use `TRACKING_PROVIDER` to select tracking behavior. Mock mode makes no
-external provider request and is the safest local default. Shippo mode requires
-a valid Shippo API token and can return real tracking data.
+Mock tracking makes no provider request and is the safest development default.
+Shippo mode requires a valid Shippo API token and returns provider data.
 
-### 4. Apply migrations
+### Apply database migrations
 
-Alembic reads the database settings used by FastAPI. From `backend/`:
+From `backend/`:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
-Useful migration checks:
+Useful migration inspection commands:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m alembic current
@@ -201,11 +413,11 @@ Useful migration checks:
 ..\.venv\Scripts\python.exe -m alembic check
 ```
 
-Do not use `alembic stamp` as a substitute for running required migrations.
-Never downgrade or reset a populated database without a verified backup and an
-explicit understanding of the migration's downgrade behavior.
+Do not use `alembic stamp` as a substitute for required migrations. Never
+downgrade or reset a populated database without a verified backup and an
+explicit review of the downgrade operation.
 
-### 5. Start FastAPI
+### Start FastAPI
 
 From `backend/`:
 
@@ -213,14 +425,10 @@ From `backend/`:
 ..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-FastAPI starts on `http://127.0.0.1:8000`. Verify the application and database:
+FastAPI starts on `http://127.0.0.1:8000`. Use `/health` and `/health/db` to
+verify the application and PostgreSQL connection.
 
-```text
-GET http://127.0.0.1:8000/health
-GET http://127.0.0.1:8000/health/db
-```
-
-### 6. Start Next.js
+### Start Next.js
 
 In another terminal, from `frontend/`:
 
@@ -228,19 +436,20 @@ In another terminal, from `frontend/`:
 npm run dev
 ```
 
-Open `http://localhost:3000`. The local Next.js rewrite defaults to FastAPI on
-`http://127.0.0.1:8000` when `BACKEND_API_URL` is absent.
+Open `http://localhost:3000`. When the server-only frontend backend URL is
+absent, the Next.js proxy defaults to FastAPI on `http://127.0.0.1:8000`.
 
 ## Environment variable names
 
-Never commit real environment files or put secret values into frontend browser
-variables. The following lists contain names only.
+The following lists contain names only. Never commit real environment files,
+credentials, or provider secrets, and never place secrets in `NEXT_PUBLIC_`
+variables.
 
 ### Frontend server environment
 
 - `BACKEND_API_URL`
 
-This variable is server-only. ParcelPulse does not use a `NEXT_PUBLIC_` API URL.
+ParcelPulse does not use a public browser API URL.
 
 ### Backend database
 
@@ -261,9 +470,6 @@ This variable is server-only. ParcelPulse does not use a `NEXT_PUBLIC_` API URL.
 - `AUTH_COOKIE_SAMESITE`
 - `ENABLE_DEV_NOTIFICATION_ENDPOINT`
 
-The development notification endpoint must remain disabled outside a local
-development environment.
-
 ### Tracking provider
 
 - `TRACKING_PROVIDER`
@@ -275,71 +481,21 @@ development environment.
 - `SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS`
 - `SHIPPO_WEBHOOK_SECRET`
 
-`SHIPPO_WEBHOOK_SECRET` is optional and supports an additional trusted-relay
-check. The Shippo HMAC secret is separate from the Shippo API token.
+The relay secret is optional and supports an additional trusted-proxy check.
+The Shippo HMAC secret is separate from the Shippo API token.
 
-## Production deployment
+## Testing and verification
 
-### Vercel frontend
-
-Vercel builds the `frontend` directory as a Next.js application. Its server
-environment supplies `BACKEND_API_URL`, while browser bundles contain only
-relative API paths. The `/api/:path*` rewrite proxies browser traffic to the
-Railway FastAPI service and keeps session cookies first-party to the Vercel
-origin.
-
-### Railway backend and PostgreSQL
-
-Railway runs FastAPI as an HTTPS web service and hosts the PostgreSQL database.
-The backend receives database, authentication, Shippo, cookie, origin, and
-webhook-verification settings through Railway environment variables. Database
-connections should use Railway's private networking where available.
-
-Apply Alembic migrations deliberately against the Railway database before a
-backend release that depends on them. FastAPI does not blindly recreate tables
-at startup.
-
-### Shippo tracking and webhooks
-
-With Shippo selected, FastAPI registers and reads trackers through Shippo,
-normalizes provider responses, and stores the canonical timeline. Once a
-Shippo webhook is registered, Shippo sends automatic `track_updated`
-deliveries to the public Railway webhook endpoint.
-
-Production webhook requests require HMAC verification. ParcelPulse validates
-the signature against the exact raw request body, enforces a timestamp
-tolerance for replay protection, compares secrets in constant time, rejects
-malformed payloads, and does not log full payloads or credentials. Repeated
-webhooks are idempotent and cannot change shipment ownership.
-
-## Security notes
-
-- Passwords are hashed with Argon2 and never stored in plaintext.
-- Authentication uses signed HttpOnly cookies; tokens are not stored in
-  `localStorage`.
-- The Vercel same-origin proxy avoids production reliance on third-party
-  authentication cookies.
-- Production cookies must use secure attributes appropriate for HTTPS.
-- All shipment and notification queries are scoped to the authenticated user.
-- Requests for another user's records return not-found responses rather than
-  revealing ownership information.
-- Database credentials, authentication secrets, Shippo tokens, and webhook
-  secrets belong only in protected backend/platform environment settings.
-- Secrets must never appear in source code, frontend variables, logs,
-  screenshots, issue reports, or commits.
-- Shippo webhook authentication fails closed in production when HMAC
-  verification is not configured.
-- Provider errors and logs are sanitized before reaching frontend users.
-- Production credentials should be unique per environment and rotated whenever
-  exposure is suspected.
-
-## Quality checks
-
-Run the backend test suite from `backend/`:
+Run the backend suite from `backend/`:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m pytest
 ```
+
+Backend tests cover authentication, user isolation, migrations, database
+health, carrier detection, mock and Shippo normalization, provider failures,
+shipment persistence, refresh idempotency, event reconciliation, notification
+deduplication, and webhook security.
 
 Run frontend checks from `frontend/`:
 
@@ -349,20 +505,27 @@ npm run typecheck
 npm run build
 ```
 
-Automated backend coverage includes authentication, per-user isolation,
-database health, migrations, shipment persistence, carrier detection, mock and
-Shippo provider normalization, refresh idempotency, tracking-event
-reconciliation, notification behavior, and Shippo webhook security.
+These checks validate ESLint rules, generated Next.js route types, TypeScript,
+and the optimized production build.
 
-## Future improvements
+## Roadmap
 
-- Add password reset, email verification, and optional multi-factor
-  authentication
-- Add background jobs and retry queues for provider and webhook processing
-- Add delivery notifications through opt-in email, SMS, or push channels
-- Expand strict carrier detection for additional Shippo-supported carriers
-- Add pagination and advanced dashboard analytics for larger shipment histories
-- Add structured observability, uptime monitoring, and production alerting
-- Add CI pipelines for tests, migration checks, and deployment gates
-- Add custom domains and a documented staging environment
-- Add user-controlled notification preferences and shipment labels
+### Product
+
+- Password reset, email verification, and optional multi-factor authentication
+- User-defined shipment labels and notification preferences
+- Opt-in email, SMS, or push delivery alerts
+- Dashboard pagination, analytics, and archived shipments
+
+### Tracking platform
+
+- Strict detection adapters for additional Shippo-supported carriers
+- Background polling fallback for providers without webhook delivery
+- Retry queues and dead-letter handling for provider or webhook failures
+
+### Operations and developer experience
+
+- End-to-end browser tests for production-critical user flows
+- Continuous integration for tests, builds, and migration validation
+- Structured observability, uptime monitoring, and production alerting
+- A dedicated staging environment and custom domains
