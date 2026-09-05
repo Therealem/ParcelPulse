@@ -1,28 +1,90 @@
 # ParcelPulse
 
-ParcelPulse is a universal package tracking platform in development. The
-current application provides provider-backed multi-carrier lookups,
-PostgreSQL-backed saved shipments, and shipment detail pages with tracking
-history. Deterministic mock tracking remains the default, while EasyPost or
-Shippo can be enabled explicitly for real tracking data.
+ParcelPulse is a production-deployed package tracking platform that lets users
+track and manage shipments from one private dashboard. It combines real Shippo
+tracking data with persistent shipment history, carrier events, webhook-ready
+automatic updates, and in-app delivery notifications.
 
-## Project structure
+The production frontend runs on Vercel. FastAPI and PostgreSQL run on Railway,
+with browser API requests routed through the Next.js origin so authentication
+does not depend on third-party cookies.
+
+## Current features
+
+- User registration, login, logout, and authenticated session recovery
+- Secure HttpOnly cookie authentication without browser local-storage tokens
+- Private, per-user shipment dashboards
+- Shipment ownership and isolation across every read, refresh, and delete path
+- Real package tracking through the Shippo Tracking API
+- Carrier detection for UPS, USPS, FedEx, and DHL tracking-number formats
+- A provider abstraction designed to support additional Shippo carriers as
+  carrier detection is expanded
+- Persistent shipment status, estimated delivery, latest update, and location
+  history
+- Shipment detail pages with newest-first tracking timelines
+- Idempotent refreshes that reconcile the provider's canonical event history
+- Shipment deletion with related tracking-event cleanup
+- Tracking-number search, carrier/status filters, and shipment sorting
+- Shippo webhooks for automatic tracking updates
+- Owner-scoped in-app notifications for meaningful delivery transitions
+- A production same-origin frontend/backend integration through `/api`
+- Deterministic mock tracking for safe local development and automated tests
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Backend | Python, FastAPI, Uvicorn |
+| Database | PostgreSQL, SQLAlchemy 2.x, psycopg |
+| Migrations | Alembic |
+| Tracking | Shippo Tracking API with a mock-provider fallback |
+| Authentication | Signed HttpOnly cookies, JWT session tokens, Argon2 password hashing |
+| Frontend hosting | Vercel |
+| Backend and database hosting | Railway |
+| Testing and quality | pytest, ESLint, TypeScript, Next.js production builds |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Browser] -->|HTTPS pages and relative /api requests| V[Next.js on Vercel]
+    V -->|Server-side rewrite| A[FastAPI on Railway]
+    A -->|SQLAlchemy and psycopg| D[(PostgreSQL on Railway)]
+    A -->|Register and read trackers| S[Shippo Tracking API]
+    S -->|Signed tracking webhooks| A
+    A -->|Shipment transitions| N[In-app notifications]
+```
+
+The frontend never needs the Railway API origin in browser code. Client-side
+requests use relative `/api/...` URLs, and `frontend/next.config.ts` proxies
+those requests to the server-only `BACKEND_API_URL`. Server-rendered frontend
+code contacts FastAPI directly and forwards the incoming session cookie.
+
+FastAPI owns authentication, authorization, carrier detection, provider
+normalization, idempotent shipment/event reconciliation, notifications, and
+webhook validation. PostgreSQL stores users, shipments, tracking events, and
+notifications. Alembic is the only production schema-management mechanism.
+
+## Repository structure
 
 ```text
 ParcelPulse/
-|-- frontend/          # Next.js, React, TypeScript, and Tailwind CSS
+|-- frontend/
+|   |-- src/app/              # Next.js App Router pages
+|   |-- src/components/       # Tracking, dashboard, auth, and notification UI
+|   |-- src/lib/              # Server-only auth and shipment helpers
+|   `-- next.config.ts        # Same-origin /api rewrite
 |-- backend/
+|   |-- alembic/              # Versioned PostgreSQL migrations
 |   |-- app/
-|   |   |-- api/
-|   |   |-- carriers/
-|   |   |-- database/
-|   |   |-- models/
-|   |   |-- schemas/
-|   |   |-- services/
-|   |   |-- tracking_providers/
-|   |   `-- main.py    # FastAPI application entry point
-|   |-- alembic/       # Versioned database migrations
-|   |-- alembic.ini
+|   |   |-- api/              # FastAPI routes
+|   |   |-- carriers/         # Carrier adapters and number detection
+|   |   |-- database/         # SQLAlchemy engine and sessions
+|   |   |-- models/           # User, shipment, event, and notification models
+|   |   |-- schemas/          # API request and response models
+|   |   |-- services/         # Tracking, webhook, auth, and notification logic
+|   |   `-- tracking_providers/ # Mock and Shippo provider implementations
 |   |-- tests/
 |   `-- requirements.txt
 |-- .env.example
@@ -30,402 +92,36 @@ ParcelPulse/
 `-- README.md
 ```
 
-## Prerequisites
+## API overview
 
-- Node.js 20.9 or newer
-- npm 10 or newer
-- Python 3.11 or newer
-
-## Run the frontend
-
-From the repository root:
-
-```bash
-cp .env.example frontend/.env.local
-cd frontend
-npm install
-npm run dev
-```
-
-In Windows PowerShell, use `Copy-Item .env.example frontend\.env.local` from the
-repository root instead of `cp`. Then open
-[http://localhost:3000](http://localhost:3000).
-
-On Windows, if PowerShell blocks the `npm.ps1` shim, use `npm.cmd` in place of
-`npm` (for example, `npm.cmd run dev`). This is still the npm package manager.
-
-Useful frontend checks:
-
-```bash
-npm run lint
-npm run typecheck
-npm run build
-```
-
-## Run the backend
-
-Create and activate a virtual environment before installing dependencies.
-
-Create `backend/.env` with the PostgreSQL and authentication settings before
-starting FastAPI:
-
-```env
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_NAME=parcelpulse
-DATABASE_USER=parcelpulse_app
-DATABASE_PASSWORD=your_actual_postgresql_password
-AUTH_SECRET_KEY=paste_a_generated_random_value_here
-AUTH_TOKEN_EXPIRE_MINUTES=480
-AUTH_COOKIE_NAME=parcelpulse_session
-AUTH_COOKIE_SECURE=false
-AUTH_COOKIE_SAMESITE=lax
-FRONTEND_ORIGIN=http://localhost:3000
-APP_ENV=development
-ENABLE_DEV_NOTIFICATION_ENDPOINT=false
-SHIPPO_API_TOKEN=replace_with_shippo_api_token
-SHIPPO_WEBHOOK_SECRET=replace_with_shippo_webhook_secret
-SHIPPO_WEBHOOK_HMAC_SECRET=replace_with_shippo_hmac_secret
-SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=300
-EASYPOST_API_KEY=replace_with_easypost_api_key
-TRACKING_PROVIDER=mock
-```
-
-The database password, authentication secret, and provider API credentials
-belong only in `backend/.env`; that file is ignored by Git. Generate a unique
-random authentication secret for each deployed environment. Use
-`AUTH_COOKIE_SECURE=true` when serving the API over HTTPS.
-
-Generate a local authentication secret without committing it:
-
-```powershell
-.\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Paste the output into `backend/.env` as `AUTH_SECRET_KEY`.
-
-### macOS or Linux
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r backend/requirements.txt
-cd backend
-../.venv/bin/python -m uvicorn app.main:app --reload
-```
-
-### Windows PowerShell
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-cd backend
-..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
-```
-
-Complete the applicable steps in **Database migrations** below before starting
-Uvicorn. The application does not run `create_all` or migrations at startup;
-production deployments must apply committed migrations explicitly.
-
-## Database migrations
-
-Alembic reads the same `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`,
-`DATABASE_USER`, and `DATABASE_PASSWORD` values from `backend/.env` as the
-FastAPI application. Run all Alembic commands from the `backend` directory.
-
-For a new, empty database, apply every migration before starting FastAPI:
-
-```powershell
-..\.venv\Scripts\python.exe -m alembic upgrade head
-```
-
-For the existing database from the shipment-history milestone, first stop
-FastAPI, take a backup, and verify that it is at the initial revision:
-
-```powershell
-..\.venv\Scripts\python.exe -m alembic current
-```
-
-It should report `20260827_0001`. All later additive migrations can then be
-applied normally:
-
-```powershell
-..\.venv\Scripts\python.exe -m alembic upgrade head
-```
-
-The migration chain creates `users`, adds nullable shipment ownership, and adds
-the independent `notifications` table. Existing shipment and event rows are
-not deleted or recreated. Existing shipments retain `user_id = NULL`, which
-preserves them as unassigned legacy records while keeping them out of all
-user-facing API queries.
-
-For a database already at authentication revision `20260827_0002`, revision
-`20260831_0003` only creates the empty notifications table, its foreign keys,
-deduplication constraint, and indexes. Stop FastAPI, take a backup, verify the
-current revision, and then apply it with `alembic upgrade head`. Confirm the
-new revision afterward:
-
-```powershell
-..\.venv\Scripts\python.exe -m alembic current
-```
-
-It should report `20260831_0003 (head)`. Finally, confirm that no model changes
-are missing from the migration chain:
-
-```powershell
-..\.venv\Scripts\python.exe -m alembic check
-```
-
-Common migration commands:
-
-```powershell
-# Apply all pending revisions
-..\.venv\Scripts\python.exe -m alembic upgrade head
-
-# Reverse exactly one revision
-..\.venv\Scripts\python.exe -m alembic downgrade -1
-
-# Show the database's current revision
-..\.venv\Scripts\python.exe -m alembic current
-
-# Show the migration chain
-..\.venv\Scripts\python.exe -m alembic history
-```
-
-Do not use `alembic stamp head` to skip the authentication migration: stamping
-does not execute its schema changes. The authentication downgrade removes user
-accounts and may fail if multiple users saved the same tracking number. The
-initial revision's downgrade removes both application tables. Never downgrade
-on a populated database unless the consequences are explicitly intended and a
-verified backup exists.
-
-The API runs at [http://localhost:8000](http://localhost:8000). Verify it with:
-
-```bash
-curl http://localhost:8000/health
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "service": "parcelpulse-api"
-}
-```
-
-Verify PostgreSQL connectivity with:
-
-```bash
-curl http://localhost:8000/health/db
-```
-
-A working connection returns:
-
-```json
-{
-  "status": "ok",
-  "database": "connected"
-}
-```
-
-### Tracking lookup
-
-Tracking and shipment-management endpoints require an authenticated session.
-The browser stores the signed session token in an HttpOnly cookie; the frontend
-does not use local storage for authentication.
-
-`POST /api/tracking` accepts a JSON body:
-
-```json
-{
-  "tracking_number": "1Z999AA10123456784"
-}
-```
-
-The tracking pipeline removes whitespace, normalizes case, requires exactly
-one matching carrier adapter, and asks the configured provider for normalized
-shipment details and tracking events. Successful lookups are saved to
-PostgreSQL for the authenticated user. Repeating a lookup updates that user's
-existing row without duplicating events; a different user may save the same
-number independently. Unsupported, invalid, or ambiguous formats return a 422
-response. The compatibility route `POST /api/tracking/lookup` remains
-available, but new clients should use `POST /api/tracking`.
-
-### Tracking providers
-
-`TRACKING_PROVIDER` controls the backend provider and supports three values:
-
-- `mock` is the default when the variable is absent. It uses the deterministic
-  UPS, USPS, FedEx, and DHL adapters and never makes an external request.
-- `shippo` registers the detected package through Shippo's authenticated
-  `POST /tracks` endpoint and normalizes the returned real provider data while
-  retaining ParcelPulse carrier detection and persistence.
-- `easypost` creates a standalone EasyPost Tracker for real provider data while
-  retaining ParcelPulse carrier detection and persistence.
-
-To configure EasyPost locally, place these values in `backend/.env`:
-
-```env
-TRACKING_PROVIDER=easypost
-EASYPOST_API_KEY=your_easypost_test_or_production_key
-```
-
-FastAPI sends the normalized tracking number and detected carrier to EasyPost's
-standalone Tracker API. The returned status, delivery estimate, carrier, and
-tracking details are normalized into the same ParcelPulse result used by mock
-and Shippo modes. See EasyPost's official
-[authentication guide](https://docs.easypost.com/docs/authentication) and
-[Tracker API reference](https://docs.easypost.com/docs/trackers).
-
-To configure Shippo locally, place these values in `backend/.env`:
-
-```env
-TRACKING_PROVIDER=shippo
-SHIPPO_API_TOKEN=your_shippo_test_or_live_token
-```
-
-Store only the raw `shippo_test_...` or `shippo_live_...` value. Do not include
-the `ShippoToken` prefix in `backend/.env`; ParcelPulse adds that authorization
-scheme to the outbound request.
-
-A Shippo test key can use Shippo's predefined test tracking tokens. Tracking
-an arbitrary real package requires live-mode data and a valid live key.
-
-Never place an EasyPost key or Shippo token in `.env.example`, frontend
-environment files, browser code, logs, screenshots, or commits. API keys must
-remain in `backend/.env`. ParcelPulse sends credentials only from FastAPI to
-the configured provider over HTTPS. See Shippo's official
-[authentication guide](https://docs.goshippo.com/docs/guides_general/authentication/)
-and [tracking registration reference](https://docs.goshippo.com/api-reference/tracking-status/register-a-tracking-webhook).
-
-After changing provider configuration, restart FastAPI. To switch safely back
-to deterministic development data:
-
-```env
-TRACKING_PROVIDER=mock
-```
-
-`EASYPOST_API_KEY` and `SHIPPO_API_TOKEN` are not required in mock mode.
-Provider failures are returned as stable API errors; raw provider response
-details and credentials are never sent to the frontend.
-
-### Shippo webhooks
-
-ParcelPulse accepts Shippo `track_updated` notifications at:
+Public system endpoints:
 
 ```text
+GET  /health
+GET  /health/db
 POST /api/webhooks/shippo
 ```
 
-Keep this route local until a public HTTPS deployment is intentionally
-configured. A valid tracker notification updates every user-owned saved copy
-with the same normalized tracking number and carrier. It never creates
-shipments, changes ownership, or touches legacy rows without an owner. The
-event timeline is reconciled to Shippo's complete current history, so repeat
-deliveries are idempotent and old mock events are removed.
-
-Shippo HMAC deliveries use this header format:
+Authentication endpoints:
 
 ```text
-Shippo-Auth-Signature: t=<unix_timestamp>,v1=<hmac_sha256_hex_digest>
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
 ```
 
-ParcelPulse verifies the signature against the exact raw body using
-`<timestamp>.<body>`, compares the digest in constant time, and rejects
-timestamps outside the configured tolerance. Configure the inbound HMAC
-secret received from Shippo only in `backend/.env`:
+Authenticated shipment endpoints:
 
-```env
-SHIPPO_WEBHOOK_HMAC_SECRET=your_shippo_provided_hmac_secret
-SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS=300
+```text
+POST   /api/tracking
+GET    /api/shipments
+GET    /api/shipments/{id}
+POST   /api/shipments/{id}/refresh
+DELETE /api/shipments/{id}
 ```
 
-Shippo requires account-side HMAC setup. Contact your Shippo account manager
-or Shippo Sales with the subject `HMAC Webhook Setup for ParcelPulse`, then
-complete the token exchange with Shippo's solutions team. The webhook HMAC
-secret is separate from `SHIPPO_API_TOKEN` and must never be placed in a
-frontend file, URL, log, screenshot, or commit.
-
-When `APP_ENV=production`, ParcelPulse rejects webhook processing unless the
-HMAC secret is configured. Development remains unsigned by default so local
-mock tests continue to work. The placeholder in `.env.example` is treated as
-unconfigured.
-
-For an additional trusted relay or reverse-proxy credential, configure:
-
-```env
-SHIPPO_WEBHOOK_SECRET=generate_a_unique_random_value
-```
-
-The relay must add that value in the
-`X-ParcelPulse-Webhook-Secret` request header. ParcelPulse compares it in
-constant time and rejects missing or incorrect values. If both relay and HMAC
-secrets are configured, both checks must pass.
-
-See Shippo's official
-[webhook security guide](https://docs.goshippo.com/tracking/webhook-security),
-[webhook creation reference](https://docs.goshippo.com/api-reference/webhooks/create-a-new-webhook)
-and
-[tracking webhook reference](https://docs.goshippo.com/api-reference/tracking-status/register-a-tracking-webhook).
-
-Use these deterministic tracking numbers when `TRACKING_PROVIDER=mock`:
-
-| Carrier | Tracking number |
-| --- | --- |
-| UPS | `1Z999AA10123456784` |
-| USPS | `9400111899223856928499` |
-| FedEx | `123456789012` |
-| DHL | `1234567890` |
-
-### Saved shipments
-
-List the authenticated user's saved shipments:
-
-```bash
-curl http://localhost:8000/api/shipments
-```
-
-Retrieve a shipment using the `id` returned by the list endpoint:
-
-```bash
-curl http://localhost:8000/api/shipments/1
-```
-
-Refresh an owned shipment through the same tracking pipeline:
-
-```bash
-curl -X POST http://localhost:8000/api/shipments/1/refresh
-```
-
-Refresh updates current shipment fields and only inserts carrier events that
-are not already stored for that shipment.
-
-Delete one shipment and its related tracking history:
-
-```bash
-curl -X DELETE http://localhost:8000/api/shipments/1
-```
-
-A successful deletion returns `204 No Content`. Other shipments are not
-affected, and IDs belonging to another account return 404.
-
-The single-shipment response includes a `tracking_events` array ordered newest
-to oldest. In the frontend, select any card at
-[http://localhost:3000/shipments](http://localhost:3000/shipments) to open its
-detail page and tracking timeline.
-
-### In-app notifications
-
-ParcelPulse creates owner-scoped notifications only when a saved shipment
-enters a meaningful state such as out for delivery, delivered, delayed,
-delivery exception, or returned to sender. Ordinary carrier scans do not create
-alerts. Manual refreshes and Shippo webhooks use the same transition and
-deduplication service.
-
-Authenticated notification endpoints are:
+Authenticated notification endpoints:
 
 ```text
 GET   /api/notifications
@@ -434,84 +130,239 @@ PATCH /api/notifications/{id}/read
 PATCH /api/notifications/read-all
 ```
 
-The frontend notification bell opens
-[http://localhost:3000/notifications](http://localhost:3000/notifications),
-where users can review alerts and mark one or all as read. Notification API
-queries always filter by the authenticated user, and attempts to update another
-user's notification return 404.
+`POST /api/tracking/lookup` remains as a deprecated compatibility route. New
+clients use `POST /api/tracking`.
 
-For local end-to-end UI verification only, an authenticated test-notification
-route can be enabled explicitly in `backend/.env`:
+## Local development
 
-```env
-APP_ENV=development
-ENABLE_DEV_NOTIFICATION_ENDPOINT=true
-```
+### Prerequisites
 
-After restarting FastAPI, `POST /api/notifications/dev/test` creates one
-unread test notification for the current user with no shipment association.
-The route is omitted from OpenAPI and returns 404 unless both development mode
-and the opt-in flag are active. When enabled, the notifications page displays
-a **Create test notification** button that uses the existing authenticated
-browser session and refreshes the list and unread badge automatically. Keep the
-flag false in production.
+- Node.js 20.9 or newer
+- npm 10 or newer
+- Python 3.11 or newer
+- PostgreSQL
 
-To verify the mock tracking events directly in PostgreSQL, connect with `psql`
-and run:
+ParcelPulse uses npm for all frontend package management.
 
-```sql
-SELECT te.id,
-       te.shipment_id,
-       te.status,
-       te.description,
-       te.location,
-       te.event_time
-FROM tracking_events AS te
-JOIN shipments AS s ON s.id = te.shipment_id
-WHERE s.tracking_number = '1Z999AA10123456784'
-ORDER BY te.event_time DESC;
-```
+### 1. Install frontend dependencies
 
-## Run backend tests
-
-With the backend virtual environment active:
+From the repository root:
 
 ```bash
-cd backend
-python -m pytest
+cd frontend
+npm ci
 ```
 
-## Environment variables
+On Windows, use `npm.cmd` if PowerShell blocks the `npm.ps1` shim.
 
-The frontend reads the server-only `BACKEND_API_URL` from
-`frontend/.env.local`. It defaults to `http://127.0.0.1:8000` for local
-development. Browser requests use relative `/api/...` URLs, and Next.js proxies
-them to FastAPI, so authentication cookies remain first-party on the frontend
-origin. In staging or production, set `BACKEND_API_URL` to the externally
-reachable FastAPI base URL without an `/api` suffix. Never store secrets in a
-`NEXT_PUBLIC_` variable because those values are included in browser code.
+### 2. Create the Python environment
 
-## Manual tracking test
+macOS or Linux:
 
-1. Start FastAPI on port 8000.
-2. Start Next.js on port 3000 in a second terminal.
-3. Open [http://localhost:3000/register](http://localhost:3000/register) and
-   create an account, or sign in at `/login`.
-4. Return home, enter any mock tracking number from the table above, and select
-   **Track Package**.
-5. Confirm ParcelPulse opens the saved shipment detail page with the matching
-   carrier, status, estimate, latest update, and tracking timeline.
-6. Open **View Shipments** and confirm the saved shipment is present.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+```
 
-The saved shipments dashboard also supports partial tracking-number search,
-carrier and status filters, and sorting by newest saved, oldest saved, or
-earliest estimated delivery. Use **Refresh** on a card or detail page to run the
-mock lookup again without duplicating events. The detail page also provides a
-confirmed **Delete Shipment** action.
+Windows PowerShell:
 
-## Milestone scope
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
 
-This repository intentionally does not include caches, containers, cloud
-infrastructure, password reset/email verification, multi-factor authentication,
-or direct carrier-specific API integrations. EasyPost and Shippo are optional
-real tracking providers; mock mode remains the safe development default.
+### 3. Configure local environments
+
+Create `backend/.env` for backend settings and `frontend/.env.local` for the
+server-only frontend API destination. Both files are ignored by Git. Use
+`.env.example` as the name/reference checklist, but supply values privately for
+your own environment.
+
+Use `TRACKING_PROVIDER` to select tracking behavior. Mock mode makes no
+external provider request and is the safest local default. Shippo mode requires
+a valid Shippo API token and can return real tracking data.
+
+### 4. Apply migrations
+
+Alembic reads the database settings used by FastAPI. From `backend/`:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Useful migration checks:
+
+```powershell
+..\.venv\Scripts\python.exe -m alembic current
+..\.venv\Scripts\python.exe -m alembic history
+..\.venv\Scripts\python.exe -m alembic check
+```
+
+Do not use `alembic stamp` as a substitute for running required migrations.
+Never downgrade or reset a populated database without a verified backup and an
+explicit understanding of the migration's downgrade behavior.
+
+### 5. Start FastAPI
+
+From `backend/`:
+
+```powershell
+..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+FastAPI starts on `http://127.0.0.1:8000`. Verify the application and database:
+
+```text
+GET http://127.0.0.1:8000/health
+GET http://127.0.0.1:8000/health/db
+```
+
+### 6. Start Next.js
+
+In another terminal, from `frontend/`:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000`. The local Next.js rewrite defaults to FastAPI on
+`http://127.0.0.1:8000` when `BACKEND_API_URL` is absent.
+
+## Environment variable names
+
+Never commit real environment files or put secret values into frontend browser
+variables. The following lists contain names only.
+
+### Frontend server environment
+
+- `BACKEND_API_URL`
+
+This variable is server-only. ParcelPulse does not use a `NEXT_PUBLIC_` API URL.
+
+### Backend database
+
+- `DATABASE_HOST`
+- `DATABASE_PORT`
+- `DATABASE_NAME`
+- `DATABASE_USER`
+- `DATABASE_PASSWORD`
+
+### Backend application and authentication
+
+- `APP_ENV`
+- `FRONTEND_ORIGIN`
+- `AUTH_SECRET_KEY`
+- `AUTH_TOKEN_EXPIRE_MINUTES`
+- `AUTH_COOKIE_NAME`
+- `AUTH_COOKIE_SECURE`
+- `AUTH_COOKIE_SAMESITE`
+- `ENABLE_DEV_NOTIFICATION_ENDPOINT`
+
+The development notification endpoint must remain disabled outside a local
+development environment.
+
+### Tracking provider
+
+- `TRACKING_PROVIDER`
+- `SHIPPO_API_TOKEN`
+
+### Shippo webhook verification
+
+- `SHIPPO_WEBHOOK_HMAC_SECRET`
+- `SHIPPO_WEBHOOK_HMAC_TOLERANCE_SECONDS`
+- `SHIPPO_WEBHOOK_SECRET`
+
+`SHIPPO_WEBHOOK_SECRET` is optional and supports an additional trusted-relay
+check. The Shippo HMAC secret is separate from the Shippo API token.
+
+## Production deployment
+
+### Vercel frontend
+
+Vercel builds the `frontend` directory as a Next.js application. Its server
+environment supplies `BACKEND_API_URL`, while browser bundles contain only
+relative API paths. The `/api/:path*` rewrite proxies browser traffic to the
+Railway FastAPI service and keeps session cookies first-party to the Vercel
+origin.
+
+### Railway backend and PostgreSQL
+
+Railway runs FastAPI as an HTTPS web service and hosts the PostgreSQL database.
+The backend receives database, authentication, Shippo, cookie, origin, and
+webhook-verification settings through Railway environment variables. Database
+connections should use Railway's private networking where available.
+
+Apply Alembic migrations deliberately against the Railway database before a
+backend release that depends on them. FastAPI does not blindly recreate tables
+at startup.
+
+### Shippo tracking and webhooks
+
+With Shippo selected, FastAPI registers and reads trackers through Shippo,
+normalizes provider responses, and stores the canonical timeline. Once a
+Shippo webhook is registered, Shippo sends automatic `track_updated`
+deliveries to the public Railway webhook endpoint.
+
+Production webhook requests require HMAC verification. ParcelPulse validates
+the signature against the exact raw request body, enforces a timestamp
+tolerance for replay protection, compares secrets in constant time, rejects
+malformed payloads, and does not log full payloads or credentials. Repeated
+webhooks are idempotent and cannot change shipment ownership.
+
+## Security notes
+
+- Passwords are hashed with Argon2 and never stored in plaintext.
+- Authentication uses signed HttpOnly cookies; tokens are not stored in
+  `localStorage`.
+- The Vercel same-origin proxy avoids production reliance on third-party
+  authentication cookies.
+- Production cookies must use secure attributes appropriate for HTTPS.
+- All shipment and notification queries are scoped to the authenticated user.
+- Requests for another user's records return not-found responses rather than
+  revealing ownership information.
+- Database credentials, authentication secrets, Shippo tokens, and webhook
+  secrets belong only in protected backend/platform environment settings.
+- Secrets must never appear in source code, frontend variables, logs,
+  screenshots, issue reports, or commits.
+- Shippo webhook authentication fails closed in production when HMAC
+  verification is not configured.
+- Provider errors and logs are sanitized before reaching frontend users.
+- Production credentials should be unique per environment and rotated whenever
+  exposure is suspected.
+
+## Quality checks
+
+Run the backend test suite from `backend/`:
+
+```powershell
+..\.venv\Scripts\python.exe -m pytest
+```
+
+Run frontend checks from `frontend/`:
+
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+
+Automated backend coverage includes authentication, per-user isolation,
+database health, migrations, shipment persistence, carrier detection, mock and
+Shippo provider normalization, refresh idempotency, tracking-event
+reconciliation, notification behavior, and Shippo webhook security.
+
+## Future improvements
+
+- Add password reset, email verification, and optional multi-factor
+  authentication
+- Add background jobs and retry queues for provider and webhook processing
+- Add delivery notifications through opt-in email, SMS, or push channels
+- Expand strict carrier detection for additional Shippo-supported carriers
+- Add pagination and advanced dashboard analytics for larger shipment histories
+- Add structured observability, uptime monitoring, and production alerting
+- Add CI pipelines for tests, migration checks, and deployment gates
+- Add custom domains and a documented staging environment
+- Add user-controlled notification preferences and shipment labels
